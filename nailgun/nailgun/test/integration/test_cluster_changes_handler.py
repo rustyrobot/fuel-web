@@ -91,13 +91,22 @@ class TestHandlers(BaseIntegrationTest):
         nodes_db = sorted(cluster_db.nodes, key=lambda n: n.id)
         assigned_ips = {}
         i = 0
+        admin_ips = [
+            '10.20.0.139/24',
+            '10.20.0.137/24',
+            '10.20.0.135/24',
+            '10.20.0.133/24',
+            '10.20.0.131/24',
+            '10.20.0.129/24']
         for node in nodes_db:
             node_id = node.id
+            admin_ip = admin_ips.pop()
             for role in sorted(node.roles + node.pending_roles):
                 assigned_ips[node_id] = {}
                 assigned_ips[node_id]['internal'] = '192.168.0.%d' % (i + 3)
                 assigned_ips[node_id]['public'] = '172.16.0.%d' % (i + 3)
                 assigned_ips[node_id]['storage'] = '192.168.1.%d' % (i + 2)
+                assigned_ips[node_id]['admin'] = admin_ip
 
                 nodes_list.append({
                     'role': role,
@@ -154,20 +163,16 @@ class TestHandlers(BaseIntegrationTest):
                         'eth0.100': {
                             'interface': 'eth0.100',
                             'ipaddr': ['%s/24' % ips['public']],
-                            'gateway': '172.16.0.1',
-                            '_name': 'public'},
+                            'gateway': '172.16.0.1'},
                         'eth0.101': {
                             'interface': 'eth0.101',
-                            'ipaddr': ['%s/24' % ips['internal']],
-                            '_name': 'management'},
+                            'ipaddr': ['%s/24' % ips['internal']]},
                         'eth0.102': {
                             'interface': 'eth0.102',
-                            'ipaddr': ['%s/24' % ips['storage']],
-                            '_name': 'storage'},
+                            'ipaddr': ['%s/24' % ips['storage']]},
                         'eth0.103': {
                             'interface': 'eth0.103',
-                            'ipaddr': 'none',
-                            '_name': 'fixed'},
+                            'ipaddr': 'none'},
                         'lo': {
                             'interface': 'lo',
                             'ipaddr': ['127.0.0.1/8']},
@@ -176,8 +181,7 @@ class TestHandlers(BaseIntegrationTest):
                             'ipaddr': 'none'},
                         'eth0': {
                             'interface': 'eth0',
-                            'ipaddr': 'dhcp',
-                            '_name': 'admin'}}}
+                            'ipaddr': [ips['admin']]}}}
 
                 individual_atts.update(common_attrs)
                 individual_atts['glance']['image_cache_max_size'] = str(
