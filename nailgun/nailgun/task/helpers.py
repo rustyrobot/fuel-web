@@ -18,6 +18,7 @@ import os
 import shutil
 
 from nailgun.api.models import IPAddr
+from nailgun.api.models import Node
 from nailgun.api.models import Task
 from nailgun.db import db
 from nailgun.errors import errors
@@ -230,24 +231,26 @@ class TaskHelper(object):
     @classmethod
     def update_cluster_status(cls, uuid):
         task = db().query(Task).filter_by(uuid=uuid).first()
-        # FIXME: should be moved to task/manager "finish" method after
-        # web.ctx.orm issue is addressed
         cluster = task.cluster
+
+        # if supertask is error or ready
         if task.name == 'deploy':
             if task.status == 'ready':
-                # FIXME: we should also calculate deployment "validity"
-                # (check if all of the required nodes of required roles are
-                # present). If cluster is not "valid", we should also set
-                # its status to "error" even if it is deployed successfully.
-                # This method is also would be affected by web.ctx.orm issue.
                 cls.__set_cluster_status(cluster, 'operational')
                 cluster.clear_pending_changes()
             elif task.status == 'error':
-                cls.__set_cluster_status(cluster, 'error')
-        elif task.name == 'provision':
-            if task.status == 'error':
-                cls.__set_cluster_status(cluster, 'error')
+                cls.__set_cluster_status_to_error(cluster, 'provision')
+        elif task.name == 'deployment' and task.status == 'error':
+            cls.__set_cluster_status_to_error(cluster, 'deploy')
+        elif task.name == 'provision' and task.status == 'error':
+            cls.__set_cluster_status_to_error(cluster, 'provision')
+
         db().commit()
+
+    @classmethod
+    def __set_cluster_status_to_error(cls, cluster, error_type):
+        cls.__set_cluster_status(cluster, 'error')
+        cls.__set_nodes_status_to_error(cluster, error_type)
 
     @classmethod
     def __set_cluster_status(cls, cluster, new_state):
@@ -255,6 +258,23 @@ class TaskHelper(object):
             "Updating cluster (%s) status: from %s to %s",
             cluster.full_name, cluster.status, new_state)
         cluster.status = new_state
+
+    @classmethod
+    def __set_nodes_status_to_error(cls, cluster, error_type):
+        nodes_to_error = db().query(Node).\
+            filter(Node.cluster==cluster).\
+            filter(Node.status.in_(
+                ['provisioning', 'provisioned', 'deploying']))
+
+        if nodes_to_error:
+            logger.debug(
+                u'Updating nodes to error with error_type "{0}": {1}'.format(
+                    error_type, map(lambda n: n.full_name, nodes_to_error)))
+
+        for node in nodes_to_error:
+            node.status = 'error'
+            node.progress = 0
+            node.error_type = error_type
 
     @classmethod
     def nodes_to_delete(cls, cluster):
