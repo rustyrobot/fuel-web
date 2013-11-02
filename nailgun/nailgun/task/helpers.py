@@ -193,7 +193,12 @@ class TaskHelper(object):
                 db().add(task)
                 db().commit()
                 cls.update_cluster_status(uuid)
-            elif all(map(lambda s: s.status in ('ready', 'error'), subtasks)):
+            elif any(map(lambda s: s.status in ('error'), subtasks)):
+                for subtask in subtasks:
+                    subtask.status = 'error'
+                    subtask.progress = 100
+                    subtask.message = 'Task aborted'
+
                 task.status = 'error'
                 task.progress = 100
                 task.message = u'\n'.join(list(set(map(
