@@ -261,7 +261,7 @@ class TaskHelper(object):
     def __update_cluster_to_provisioning_error(cls, cluster):
         cls.__set_cluster_status(cluster, 'error')
         nodes_to_error = db().query(Node).\
-            filter(Node.cluster==cluster).\
+            filter(Node.cluster == cluster).\
             filter(Node.status.in_(['provisioning']))
 
         cls.__set_nodes_status_to_error(nodes_to_error, 'provision')
@@ -270,7 +270,7 @@ class TaskHelper(object):
     def __update_cluster_to_deployment_error(cls, cluster):
         cls.__set_cluster_status(cluster, 'error')
         nodes_to_error = db().query(Node).\
-            filter(Node.cluster==cluster).\
+            filter(Node.cluster == cluster).\
             filter(Node.status.in_(['provisioned', 'deploying']))
 
         cls.__set_nodes_status_to_error(nodes_to_error, 'deploy')

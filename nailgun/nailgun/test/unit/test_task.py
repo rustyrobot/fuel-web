@@ -46,7 +46,7 @@ class TestHelperUpdateClusterStatus(BaseTestCase):
     @property
     def nodes(self):
         return sorted(self.cluster.nodes, key=lambda n: n.id)
-        
+
     def test_update_nodes_to_error_if_deployment_task_failed(self):
         self.nodes[0].status = 'deploying'
         self.nodes[0].progress = 12

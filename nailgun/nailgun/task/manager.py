@@ -274,7 +274,6 @@ class DeploymentTaskManager(TaskManager):
 
         return subtask_messages
 
-
     def check_before_deployment(self, supertask):
         # checking admin intersection with untagged
         if self.cluster.net_provider == 'nova_network':
