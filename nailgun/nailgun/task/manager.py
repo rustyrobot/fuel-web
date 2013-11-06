@@ -195,9 +195,9 @@ class DeploymentTaskManager(TaskManager):
             task_messages.append(deployment_message)
 
         if nodes_to_provision:
-           for node in nodes_to_provision:
-               node.status = 'provisioning'
-               db().commit()
+            for node in nodes_to_provision:
+                node.status = 'provisioning'
+                db().commit()
 
         if task_messages:
             rpc.cast('naily', task_messages)

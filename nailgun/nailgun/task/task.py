@@ -117,6 +117,10 @@ class DeploymentTask(object):
                 if n.pending_roles:
                     n.roles += n.pending_roles
                     n.pending_roles = []
+
+                # If reciever for some reasons didn't update
+                # node's status to provisioned when deployment
+                # started, we should do it in nailgun
                 if n.status in ('deploying'):
                     n.status = 'provisioned'
                 n.progress = 0

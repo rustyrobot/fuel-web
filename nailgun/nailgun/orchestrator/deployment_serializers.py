@@ -247,7 +247,6 @@ class NovaOrchestratorSerializer(object):
                     'fqdn': node.fqdn,
                     'name': TaskHelper.make_slave_name(node.id),
                     'role': role,
-
                     # Addresses
                     'internal_address': cls.get_addr(network_data,
                                                      'management')['ip'],

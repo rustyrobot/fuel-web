@@ -105,24 +105,15 @@ class TestErrors(BaseIntegrationTest):
                  "pending_addition": True},
                 {"name": "Second",
                  "roles": ["compute"],
-                 "pending_addition": True}
-            ]
-        )
-        print '=' * 30
-        print map(lambda n: [n.status, n.error_type], self.env.nodes)
-
+                 "pending_addition": True}])
         supertask = self.env.launch_deployment()
         self.env.wait_error(supertask, 60, re.compile(
-            "Deployment has failed\. Check these nodes:\n'(First|Second)'"
-        ))
+            "Deployment has failed\. Check these nodes:\n'(First|Second)'"))
         self.env.refresh_nodes()
         self.env.refresh_clusters()
         n_error = lambda n: (n.status, n.error_type) == ('error', 'deploy')
 
-        print '*' * 30
-        print map(lambda n: [n.status, n.error_type], self.env.nodes)
-
-        self.assertEqual(len(map(n_error, self.env.nodes)), 1)
+        self.assertEqual(len(map(n_error, self.env.nodes)), 2)
         self.assertEquals(supertask.cluster.status, 'error')
 
     @fake_tasks(error="deployment", task_ready=True)

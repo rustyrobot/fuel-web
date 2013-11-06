@@ -190,14 +190,14 @@ class TaskHelper(object):
                 task.message = u'\n'.join(map(
                     lambda s: s.message, filter(
                         lambda s: s.message is not None, subtasks)))
-                db().add(task)
                 db().commit()
                 cls.update_cluster_status(uuid)
             elif any(map(lambda s: s.status in ('error'), subtasks)):
                 for subtask in subtasks:
-                    subtask.status = 'error'
-                    subtask.progress = 100
-                    subtask.message = 'Task aborted'
+                    if not subtask.status in ('error', 'ready'):
+                        subtask.status = 'error'
+                        subtask.progress = 100
+                        subtask.message = 'Task aborted'
 
                 task.status = 'error'
                 task.progress = 100
@@ -208,7 +208,6 @@ class TaskHelper(object):
                             # TODO: make this check less ugly
                             s.message == 'Task aborted'
                         ), subtasks)))))
-                db().add(task)
                 db().commit()
                 cls.update_cluster_status(uuid)
             else:
@@ -230,7 +229,6 @@ class TaskHelper(object):
                     )
                 else:
                     task.progress = 0
-                db().add(task)
                 db().commit()
 
     @classmethod
@@ -238,24 +236,44 @@ class TaskHelper(object):
         task = db().query(Task).filter_by(uuid=uuid).first()
         cluster = task.cluster
 
-        # if supertask is error or ready
         if task.name == 'deploy':
             if task.status == 'ready':
+                # If for reasosns orchestrator
+                # didn't send ready status for node
+                # we should set it explicitly
+                for n in cluster.nodes:
+                    if n.status == 'deploying':
+                        n.status = 'ready'
+                        n.progress = 100
+
                 cls.__set_cluster_status(cluster, 'operational')
                 cluster.clear_pending_changes()
             elif task.status == 'error':
-                cls.__set_cluster_status_to_error(cluster, 'provision')
+                cls.__set_cluster_status(cluster, 'error')
         elif task.name == 'deployment' and task.status == 'error':
-            cls.__set_cluster_status_to_error(cluster, 'deploy')
+            cls.__update_cluster_to_deployment_error(cluster)
         elif task.name == 'provision' and task.status == 'error':
-            cls.__set_cluster_status_to_error(cluster, 'provision')
+            cls.__update_cluster_to_provisioning_error(cluster)
 
         db().commit()
 
     @classmethod
-    def __set_cluster_status_to_error(cls, cluster, error_type):
+    def __update_cluster_to_provisioning_error(cls, cluster):
         cls.__set_cluster_status(cluster, 'error')
-        cls.__set_nodes_status_to_error(cluster, error_type)
+        nodes_to_error = db().query(Node).\
+            filter(Node.cluster==cluster).\
+            filter(Node.status.in_(['provisioning']))
+
+        cls.__set_nodes_status_to_error(nodes_to_error, 'provision')
+
+    @classmethod
+    def __update_cluster_to_deployment_error(cls, cluster):
+        cls.__set_cluster_status(cluster, 'error')
+        nodes_to_error = db().query(Node).\
+            filter(Node.cluster==cluster).\
+            filter(Node.status.in_(['provisioned', 'deploying']))
+
+        cls.__set_nodes_status_to_error(nodes_to_error, 'deploy')
 
     @classmethod
     def __set_cluster_status(cls, cluster, new_state):
@@ -265,13 +283,8 @@ class TaskHelper(object):
         cluster.status = new_state
 
     @classmethod
-    def __set_nodes_status_to_error(cls, cluster, error_type):
-        nodes_to_error = db().query(Node).\
-            filter(Node.cluster==cluster).\
-            filter(Node.status.in_(
-                ['provisioning', 'provisioned', 'deploying']))
-
-        if nodes_to_error:
+    def __set_nodes_status_to_error(cls, nodes_to_error, error_type):
+        if nodes_to_error.count():
             logger.debug(
                 u'Updating nodes to error with error_type "{0}": {1}'.format(
                     error_type, map(lambda n: n.full_name, nodes_to_error)))
