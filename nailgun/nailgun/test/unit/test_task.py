@@ -60,9 +60,7 @@ class TestHelperUpdateClusterStatus(BaseTestCase):
         self.node_should_be_error_with_type(self.nodes[0], 'deploy')
         self.nodes_should_not_be_error(self.nodes[1:])
 
-    def test_update_nodes_to_error_if_deploy_task_failed(self):
-        self.nodes[0].status = 'deploying'
-        self.nodes[0].progress = 12
+    def test_update_cluster_to_error_if_deploy_task_failed(self):
         task = Task(name='deploy', cluster=self.cluster, status='error')
         self.db.add(task)
         self.db.commit()
@@ -70,9 +68,7 @@ class TestHelperUpdateClusterStatus(BaseTestCase):
         TaskHelper.update_cluster_status(task.uuid)
 
         self.assertEquals(self.cluster.status, 'error')
-        self.node_should_be_error_with_type(self.nodes[0], 'provision')
-        self.nodes_should_not_be_error(self.nodes[1:])
-            
+
     def test_update_nodes_to_error_if_provision_task_failed(self):
         self.nodes[0].status = 'provisioning'
         self.nodes[0].progress = 12
@@ -94,3 +90,23 @@ class TestHelperUpdateClusterStatus(BaseTestCase):
         TaskHelper.update_cluster_status(task.uuid)
 
         self.assertEquals(self.cluster.status, 'operational')
+
+    def test_update_if_parent_task_is_ready_all_nodes_should_be_ready(self):
+        for node in self.nodes:
+            node.status = 'ready'
+            node.progress = 100
+
+        self.nodes[0].status = 'deploying'
+        self.nodes[0].progress = 24
+
+        task = Task(name='deploy', cluster=self.cluster, status='ready')
+        self.db.add(task)
+        self.db.commit()
+
+        TaskHelper.update_cluster_status(task.uuid)
+
+        self.assertEquals(self.cluster.status, 'operational')
+
+        for node in self.nodes:
+            self.assertEquals(node.status, 'ready')
+            self.assertEquals(node.progress, 100)

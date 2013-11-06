@@ -178,9 +178,6 @@ class ProvisionTask(object):
 
             TaskHelper.prepare_syslog_dir(node)
 
-            # node.status = 'provisioning'
-            db().commit()
-
         serialized_cluster = task.cluster.replaced_provisioning_info or \
             provisioning_serializers.serialize(task.cluster)
 

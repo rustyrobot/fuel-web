@@ -238,7 +238,7 @@ class TaskHelper(object):
 
         if task.name == 'deploy':
             if task.status == 'ready':
-                # If for reasosns orchestrator
+                # If for some reasosns orchestrator
                 # didn't send ready status for node
                 # we should set it explicitly
                 for n in cluster.nodes:
