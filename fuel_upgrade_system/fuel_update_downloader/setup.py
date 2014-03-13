@@ -28,22 +28,21 @@ def find_requires():
 
 
 if __name__ == "__main__":
-    setup(name='fuel_upgrade',
+    setup(name='fuel_update_downloader',
           version='0.1.0',
-          description='Upgrade system for Fuel-master node',
-          long_description="""Upgrade system for Fuel-master node""",
+          description='Updates downloader for Fuel-master node',
+          long_description="""Updates downloader for Fuel-master node""",
           classifiers=[
-              "Development Status :: 1 - Planning",
               "Programming Language :: Python",
               "Topic :: System :: Software Distribution"],
           author='Mirantis Inc.',
           author_email='product@mirantis.com',
           url='http://mirantis.com',
-          keywords='fuel upgrade mirantis',
+          keywords='fuel download upgrade mirantis',
           packages=find_packages(),
           zip_safe=False,
           install_requires=find_requires(),
           include_package_data=True,
           entry_points={
               'console_scripts': [
-                  'fuel-upgrade = fuel_upgrade.cli:main']})
+                  'fuel-update-downloader = fuel_update_downloader.cli:main']})
