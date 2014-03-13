@@ -14,18 +14,22 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from fuel_upgrade.logger import configure_logger
+logger = configure_logger('/tmp/file.log')
+
+
 import argparse
 import sys
 import traceback
 
-from fuel_upgrade.downloader import Downloader
 from fuel_upgrade import errors
 from fuel_upgrade.upgrade import Upgrade
 
 
 def handle_exception(exc):
     if isinstance(exc, errors.FuelUpgradeException):
-        sys.stderr.write(str(exc) + "\n")
+        err_msg = str(exc)
+        logger.error(err_msg)
         sys.exit(-1)
     else:
         traceback.print_exc(exc)
@@ -33,25 +37,24 @@ def handle_exception(exc):
 
 
 def parse_args():
+    """Parse arguments and return them
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         '--src',
-        help='upgrade url',
+        help='path to update file',
         required=True)
+
     parser.add_argument(
         '--dst',
-        help='directory where update will be downloaded',
+        help='working directory',
         required=True)
+
     parser.add_argument(
-        '--checksum',
-        help='checksum of file',
-        required=True)
-    parser.add_argument(
-        '--size',
-        help='required free space for upgrade',
-        required=True,
-        type=int)
+        '--disable_rollback',
+        help='disable rollabck in case of errors',
+        action='store_false')
 
     return parser.parse_args()
 
@@ -59,25 +62,18 @@ def parse_args():
 def run_upgrade(args):
     """Run upgrade on master node
     """
-    downloader = Downloader(
-        src_path=args.src,
-        dst_path=args.dst,
-        checksum=args.checksum,
-        required_free_space=args.size)
+    upgrader = Upgrade(
+        args.src,
+        args.dst,
+        disable_rollback=args.disable_rollback)
 
-    downloader.run()
-    upgrade_system = Upgrade()
-    upgrade_system.run()
+    upgrader.run()
 
 
-def main(args):
+def main():
     """Entry point
     """
     try:
-        run_upgrade(args)
+        run_upgrade(parse_args())
     except Exception as exc:
         handle_exception(exc)
-
-
-if __name__ == '__main__':
-    main(parse_args())

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#    Copyright 2013 Mirantis, Inc.
+#    Copyright 2014 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -19,35 +19,27 @@ import os
 import mock
 from mock import patch
 
-from StringIO import StringIO
-
 from fuel_upgrade.tests.base import BaseTestCase
-from fuel_upgrade.utils import byte_to_megabyte
-from fuel_upgrade.utils import calculate_free_space
-from fuel_upgrade.utils import calculate_md5sum
-from fuel_upgrade.utils import download_file
-
-
-class FakeFile(StringIO):
-    """It's a fake file which returns StringIO
-    when file opens with 'with' statement.
-
-    NOTE(eli): We cannot use mock_open from mock library
-    here, because it hangs when we use 'with' statement,
-    and when we want to read file by chunks.
-    """
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        pass
+from fuel_upgrade.utils import exec_cmd
 
 
 class TestUtils(BaseTestCase):
 
-    def test_byte_to_megabyte(self):
+    def test_exec_cmd_executes_sucessfuly(self):
+        cmd = 'some command'
+
+        process_mock = mock.Mock()
+        with patch.object(
+                subprocess, 'Popen', return_value=process_mock) as popen_mock:
+
+            exec_cmd(cmd)
+
+        popen_mock
+
+    def test_exec_cmd_raises_error_in_case_of_non_zero_exit_code(self):
         self.assertEquals(byte_to_megabyte(0), 0)
         self.assertEquals(byte_to_megabyte(1048576), 1)
+
 
     def test_calculate_free_space(self):
         dev_info = mock.Mock()

@@ -1,4 +1,4 @@
-#    Copyright 2013 Mirantis, Inc.
+#    Copyright 2014 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -17,9 +17,5 @@ class FuelUpgradeException(Exception):
     pass
 
 
-class NotEnoughFreeSpace(FuelUpgradeException):
-    pass
-
-
-class WrongChecksum(FuelUpgradeException):
+class ExecutedErrorNonZeroExitCode(FuelUpgradeException):
     pass

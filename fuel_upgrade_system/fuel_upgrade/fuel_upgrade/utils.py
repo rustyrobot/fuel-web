@@ -1,4 +1,6 @@
-#    Copyright 2013 Mirantis, Inc.
+# -*- coding: utf-8 -*-
+
+#    Copyright 2014 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -12,52 +14,42 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import hashlib
-import os
-import urllib2
+
+import sys
+import subprocess
+import logging
 
 
-def download_file(src, dst, chunk_size=2 ** 20):
-    """Download file
+from fuel_upgrade import errors
 
-    :param src: download from
-    :param dst: download to
-    :param chunk_size: optional parameter, size of chunk
+
+logger = logging.getLogger(__name__)
+
+
+def exec_cmd(cmd):
+    """Execute command with logging.
+    Ouput of stdout and stderr will be written
+    in log.
+
+    :param cmd: shell command
+    :raises: ExecutedErrorNonZeroExitCode
     """
-    with open(dst, 'wb') as f:
-        for chunk in urllib2.urlopen(src).read(chunk_size):
-            f.write(chunk)
+    logger.debug('Execute command "{0}"'.format(cmd))
+    child = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        shell=True)
 
+    logger.debug('Stdout and stderr of command "{0}":'.format(cmd))
+    for line in child.stdout:
+        logger.debug(line.rstrip())
 
-def calculate_md5sum(file_path, chunk_size=2 ** 20):
-    """Calculate file's checksum
+    child.wait()
+    return_code = child.returncode
 
-    :param file_path: file path
-    :param chunk_size: optional parameter, size of chunk
-    :returns: md5sum string
-    """
-    # TODO(el): maybe it will be much faster to use
-    # linux md5sum command line utility
-    md5 = hashlib.md5()
+    if return_code != 0:
+        raise errors.ExecutedErrorNonZeroExitCode(
+            'Shell command executed with "{0}" '
+            'exit code: {1} '.format(return_code, cmd))
 
-    with open(file_path, 'rb') as f:
-        for chunk in iter(lambda: f.read(chunk_size), b''):
-            md5.update(chunk)
-
-    return md5.hexdigest()
-
-
-def calculate_free_space(path):
-    """Calculate free space
-
-    :returns: free space in megabytes
-    """
-    directory = os.path.dirname(path)
-    device_info = os.statvfs(directory)
-    return byte_to_megabyte(device_info.f_bsize * device_info.f_bavail)
-
-
-def byte_to_megabyte(byte):
-    """Convert bytes to megabytes
-    """
-    return byte / 1024 ** 2
+    logger.debug('Command "{0}" successfully executed'.format(cmd))

@@ -20,7 +20,6 @@ import traceback
 
 from fuel_update_downloader.downloader import Downloader
 from fuel_update_downloader import errors
-from fuel_update_downloader.upgrade import Upgrade
 
 
 def handle_exception(exc):
@@ -37,11 +36,11 @@ def parse_args():
 
     parser.add_argument(
         '--src',
-        help='upgrade url',
+        help='update url',
         required=True)
     parser.add_argument(
         '--dst',
-        help='directory where update will be downloaded',
+        help='update path with update name',
         required=True)
     parser.add_argument(
         '--checksum',
@@ -70,14 +69,10 @@ def run_upgrade(args):
     upgrade_system.run()
 
 
-def main(args):
+def main():
     """Entry point
     """
     try:
-        run_upgrade(args)
+        run_upgrade(parse_args())
     except Exception as exc:
         handle_exception(exc)
-
-
-if __name__ == '__main__':
-    main(parse_args())

@@ -21,11 +21,11 @@ from mock import patch
 
 from StringIO import StringIO
 
-from fuel_update_downloader.tests.base import BaseTestCase
-from fuel_update_downloader.utils import byte_to_megabyte
-from fuel_update_downloader.utils import calculate_free_space
-from fuel_update_downloader.utils import calculate_md5sum
-from fuel_update_downloader.utils import download_file
+from fuel_upgrade.tests.base import BaseTestCase
+from fuel_upgrade.utils import byte_to_megabyte
+from fuel_upgrade.utils import calculate_free_space
+from fuel_upgrade.utils import calculate_md5sum
+from fuel_upgrade.utils import download_file
 
 
 class FakeFile(StringIO):
