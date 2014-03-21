@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 class PuppetUpgrader(object):
     """Puppet implementation of upgrader
 
-    TODO (eli): exact command will be added later
+    TODO (eli): exact commands and unit
+    tests will be added later
     """
     puppet_modules_dir = 'puppet_modules'
 
@@ -53,7 +54,7 @@ class Upgrade(object):
     def __init__(self,
                  update_path,
                  working_dir,
-                 upgrade_engine=PuppetUpgrader,
+                 upgrade_engine,
                  disable_rollback=False):
 
         logger.debug(
@@ -62,15 +63,15 @@ class Upgrade(object):
             'upgrade engine "{2}", '
             'disable rollback is "{3}"'.format(
                 update_path, working_dir,
-                upgrade_engine.__name__, disable_rollback))
+                upgrade_engine.__class__.__name__,
+                disable_rollback))
 
         self.update_path = update_path
         self.working_dir = working_dir
-        self.upgrade_engine = upgrade_engine(self.update_path)
+        self.upgrade_engine = upgrade_engine
         self.disable_rollback = disable_rollback
 
     def run(self):
-        logger.debug('Run upgrade process')
         self.before_upgrade()
 
         try:
@@ -89,6 +90,7 @@ class Upgrade(object):
         self.make_backup()
 
     def upgrade(self):
+        logger.debug('Run upgrade')
         self.upgrade_engine.upgrade()
 
     def after_upgrade(self):

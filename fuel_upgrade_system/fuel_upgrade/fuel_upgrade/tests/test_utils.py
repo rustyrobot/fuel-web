@@ -15,65 +15,50 @@
 #    under the License.
 
 import os
+import subprocess
+from StringIO import StringIO
 
 import mock
 from mock import patch
 
+from fuel_upgrade import errors
 from fuel_upgrade.tests.base import BaseTestCase
 from fuel_upgrade.utils import exec_cmd
 
 
 class TestUtils(BaseTestCase):
 
+    def make_process_mock(self, return_code=0):
+        process_mock = mock.Mock()
+        process_mock.stdout = ['Stdout line 1', 'Stdout line 2']
+        process_mock.returncode = return_code
+
+        return process_mock
+
     def test_exec_cmd_executes_sucessfuly(self):
         cmd = 'some command'
 
-        process_mock = mock.Mock()
+        process_mock = self.make_process_mock()
+        with patch.object(
+                subprocess, 'Popen', return_value=process_mock) as popen_mock:
+            exec_cmd(cmd)
+
+        popen_mock.assert_called_once_with(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            shell=True)
+
+    def test_exec_cmd_raises_error_in_case_of_non_zero_exit_code(self):
+        cmd = 'some command'
+        return_code = 1
+
+        process_mock = self.make_process_mock(return_code=return_code)
         with patch.object(
                 subprocess, 'Popen', return_value=process_mock) as popen_mock:
 
-            exec_cmd(cmd)
-
-        popen_mock
-
-    def test_exec_cmd_raises_error_in_case_of_non_zero_exit_code(self):
-        self.assertEquals(byte_to_megabyte(0), 0)
-        self.assertEquals(byte_to_megabyte(1048576), 1)
-
-
-    def test_calculate_free_space(self):
-        dev_info = mock.Mock()
-        dev_info.f_bsize = 1048576
-        dev_info.f_bavail = 2
-        with patch.object(os, 'statvfs', return_value=dev_info) as st_mock:
-            self.assertEquals(calculate_free_space('/tmp/dir/file'), 2)
-
-        st_mock.assert_called_once_with('/tmp/dir')
-
-    def test_calculate_md5sum(self):
-        open_mock = mock.MagicMock(return_value=FakeFile('fake file content'))
-        file_path = '/tmp/file'
-
-        with mock.patch('__builtin__.open', open_mock):
-            self.assertEquals(
-                calculate_md5sum(file_path),
-                '199df6f47108545693b5c9cb5344bf13')
-
-        open_mock.assert_called_once_with(file_path, 'rb')
-
-    def test_download_file(self):
-        content = 'Some content'
-        fake_src = StringIO(content)
-        fake_file = FakeFile('')
-        file_mock = mock.MagicMock(return_value=fake_file)
-
-        src_path = 'http://0.0.0.0:80/tmp/file'
-        dst_path = '/tmp/file'
-
-        with mock.patch('urllib2.urlopen', return_value=fake_src) as url_fake:
-            with mock.patch('__builtin__.open', file_mock):
-                download_file(src_path, dst_path)
-
-        file_mock.assert_called_once_with(dst_path, 'wb')
-        url_fake.assert_called_once_with(src_path)
-        self.assertEquals(fake_file.getvalue(), content)
+            self.assertRaisesRegexp(
+                errors.ExecutedErrorNonZeroExitCode,
+                'Shell command executed with "{0}" '
+                'exit code: {1} '.format(return_code, cmd),
+                exec_cmd, cmd)

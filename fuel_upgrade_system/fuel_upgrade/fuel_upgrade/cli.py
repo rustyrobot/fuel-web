@@ -24,6 +24,7 @@ import traceback
 
 from fuel_upgrade import errors
 from fuel_upgrade.upgrade import Upgrade
+from fuel_upgrade.upgrade import PuppetUpgrader
 
 
 def handle_exception(exc):
@@ -65,6 +66,7 @@ def run_upgrade(args):
     upgrader = Upgrade(
         args.src,
         args.dst,
+        PuppetUpgrader(args.src),
         disable_rollback=args.disable_rollback)
 
     upgrader.run()

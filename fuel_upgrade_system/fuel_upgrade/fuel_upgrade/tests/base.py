@@ -21,4 +21,8 @@ from unittest.case import TestCase
 class BaseTestCase(TestCase):
     """Base class for test cases
     """
-    pass
+
+    def method_was_not_called(self, method):
+        """Checks that mocked method was not called
+        """
+        self.assertEqual(method, 0)

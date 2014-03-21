@@ -22,66 +22,48 @@ from mock import patch
 from StringIO import StringIO
 
 from fuel_upgrade.tests.base import BaseTestCase
-from fuel_upgrade.utils import byte_to_megabyte
-from fuel_upgrade.utils import calculate_free_space
-from fuel_upgrade.utils import calculate_md5sum
-from fuel_upgrade.utils import download_file
+from fuel_upgrade.upgrade import Upgrade
 
 
-class FakeFile(StringIO):
-    """It's a fake file which returns StringIO
-    when file opens with 'with' statement.
+class TestUpgrade(BaseTestCase):
 
-    NOTE(eli): We cannot use mock_open from mock library
-    here, because it hangs when we use 'with' statement,
-    and when we want to read file by chunks.
-    """
-    def __enter__(self):
-        return self
+    def default_args(self, **kwargs):
+        default = {
+            'update_path': '/tmp/src_file',
+            'working_dir': '/tmp/dst_file',
+            'upgrade_engine': mock.Mock(),
+            'disable_rollback': False}
 
-    def __exit__(self, *args):
-        pass
+        default.update(kwargs)
+        return default
 
+    def test_run_rollback_in_case_of_errors(self):
+        engine_mock = mock.Mock()
+        engine_mock.upgrade.side_effect = Exception('Upgrade failed')
+        upgrader = Upgrade(**self.default_args(upgrade_engine=engine_mock))
+        upgrader.run()
 
-class TestUtils(BaseTestCase):
+        engine_mock.backup.assert_called_once_with()
+        engine_mock.upgrade.assert_called_once_with()
+        engine_mock.rollback.assert_called_once_with()
 
-    def test_byte_to_megabyte(self):
-        self.assertEquals(byte_to_megabyte(0), 0)
-        self.assertEquals(byte_to_megabyte(1048576), 1)
+    def test_does_not_run_rollback_if_disabled(self):
+        engine_mock = mock.Mock()
+        engine_mock.upgrade.side_effect = Exception('Upgrade failed')
+        upgrader = Upgrade(**self.default_args(
+            upgrade_engine=engine_mock,
+            disable_rollback=True))
+        upgrader.run()
 
-    def test_calculate_free_space(self):
-        dev_info = mock.Mock()
-        dev_info.f_bsize = 1048576
-        dev_info.f_bavail = 2
-        with patch.object(os, 'statvfs', return_value=dev_info) as st_mock:
-            self.assertEquals(calculate_free_space('/tmp/dir/file'), 2)
+        engine_mock.backup.assert_called_once_with()
+        engine_mock.upgrade.assert_called_once_with()
+        self.method_was_not_called(engine_mock.rollback.call_count)
 
-        st_mock.assert_called_once_with('/tmp/dir')
+    def test_upgrade_succed(self):
+        engine_mock = mock.Mock()
+        upgrader = Upgrade(**self.default_args(upgrade_engine=engine_mock))
+        upgrader.run()
 
-    def test_calculate_md5sum(self):
-        open_mock = mock.MagicMock(return_value=FakeFile('fake file content'))
-        file_path = '/tmp/file'
-
-        with mock.patch('__builtin__.open', open_mock):
-            self.assertEquals(
-                calculate_md5sum(file_path),
-                '199df6f47108545693b5c9cb5344bf13')
-
-        open_mock.assert_called_once_with(file_path, 'rb')
-
-    def test_download_file(self):
-        content = 'Some content'
-        fake_src = StringIO(content)
-        fake_file = FakeFile('')
-        file_mock = mock.MagicMock(return_value=fake_file)
-
-        src_path = 'http://0.0.0.0:80/tmp/file'
-        dst_path = '/tmp/file'
-
-        with mock.patch('urllib2.urlopen', return_value=fake_src) as url_fake:
-            with mock.patch('__builtin__.open', file_mock):
-                download_file(src_path, dst_path)
-
-        file_mock.assert_called_once_with(dst_path, 'wb')
-        url_fake.assert_called_once_with(src_path)
-        self.assertEquals(fake_file.getvalue(), content)
+        engine_mock.backup.assert_called_once_with()
+        engine_mock.upgrade.assert_called_once_with()
+        self.method_was_not_called(engine_mock.rollback.call_count)
