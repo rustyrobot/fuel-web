@@ -1,0 +1,27 @@
+version: '5.1'
+working_directory: /var/lib/fuel_upgrade/
+log_path: /var/log/fuel_upgrade.log
+puppet_modules_dir: puppet_modules
+
+container_prefix: fuel/
+
+docker:
+  url: unix://var/run/docker.sock
+  api_version: '1.8'
+  http_timeout: 10
+  stop_container_timeout: 90
+
+endpoints:
+  nailgun:
+    port: 8000
+    host: 127.0.0.1
+
+containers:
+  nailgun:
+    port: 8000
+
+  postgresql:
+    port: 5432
+
+  data:
+    port: 123

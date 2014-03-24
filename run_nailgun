@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa
+
+. /opt/nailgun/bin/activate; cd /product/nailgun
+./../run_tests.sh -c
+exec ./manage.py run -p 8001

@@ -18,18 +18,18 @@ import argparse
 import sys
 import traceback
 
+from fuel_upgrade.config import config
 from fuel_upgrade.logger import configure_logger
-# TODO(eli): move to config
-logger = configure_logger('/tmp/file.log')
+logger = configure_logger(config.log_path)
 
 from fuel_upgrade import errors
-from fuel_upgrade.upgrade import PuppetUpgrader
+from fuel_upgrade.upgrade import DockerUpgrader
 from fuel_upgrade.upgrade import Upgrade
 
 
 def handle_exception(exc):
     if isinstance(exc, errors.FuelUpgradeException):
-        logger.error(exc.message)
+        logger.error(exc)
         sys.exit(-1)
     else:
         traceback.print_exc(exc)
@@ -65,7 +65,7 @@ def run_upgrade(args):
     upgrader = Upgrade(
         args.src,
         args.dst,
-        PuppetUpgrader(args.src),
+        DockerUpgrader(args.src),
         disable_rollback=args.disable_rollback)
 
     upgrader.run()
