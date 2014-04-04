@@ -29,10 +29,6 @@ from fuel_upgrade.config import config
 logger = logging.getLogger(__name__)
 
 
-class OpenstackUpgrader(object):
-    pass
-
-
 class DockerUpgrader(object):
     """Puppet implementation of upgrader
     """
@@ -129,7 +125,8 @@ class DockerUpgrader(object):
             lambda c: str(c['Image']).startswith(image),
             all_containers)
         for container in containers:
-            logger.debug(u'Delete container {0} which depends on image {1}'.format(container['Id'], image))
+            logger.debug(u'Delete container {0} which '
+                         'depends on image {1}'.format(container['Id'], image))
             self.docker_client.remove_container(container['Id'])
 
     def _run_post_build_actions(self):
@@ -184,7 +181,21 @@ class DockerUpgrader(object):
                 'Failed to execute migraion command "{0}" '
                 'exit code {1} container id {2}'.format(
                     migration_command, exit_code, container_info['Id']))
-        
+
+
+    def run_container(self, name, **kwargs):
+        data_c = self.docker_client.create_container(
+            name,
+            name=kwargs.get('name'),
+            volumes=kwargs.get('volumes'),
+            command=kwargs.get('command'))
+
+        self.docker_client.start(
+            data_container['id'],
+            binds={
+                '/var/lib/postgresql': '/var/lib/postgresql'},
+            port_bindings={})
+
     def _delete_container_if_exist(self, container_id):
         found_containers = filter(
             lambda c: u'/{0}'.format(container_id) in c['Names'],
@@ -196,7 +207,7 @@ class DockerUpgrader(object):
 
     @property
     def new_release_containers(self):
-        """Returns list of dicts with container names
+        """Returns list of dicts with images names
         for new release, fuel/container_name/version
         and paths to Dockerfile.
         """
@@ -223,7 +234,20 @@ class DockerUpgrader(object):
             lambda c: c['id'] == container_id,
             self.new_release_containers)[0]
 
+    @property
+    def new_fuel_images():
+        pass
+
+    @property
+    def old_fuel_images():
+        pass
+
+
 class FuelUpgrader(object):
+    pass
+
+
+class OpenstackUpgrader(object):
     pass
 
 
