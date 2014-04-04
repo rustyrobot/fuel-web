@@ -17,6 +17,7 @@
 import logging
 import os
 import traceback
+from copy import deepcopy
 
 from docker import Client
 
@@ -26,6 +27,10 @@ from fuel_upgrade.utils import get_request
 from fuel_upgrade.config import config
 
 logger = logging.getLogger(__name__)
+
+
+class OpenstackUpgrader(object):
+    pass
 
 
 class DockerUpgrader(object):
@@ -53,8 +58,8 @@ class DockerUpgrader(object):
 
     def upgrade(self):
         # self._upgrade_master_node()
-        self._build_containers()
-        self._run_migration()
+        # self._build_containers()
+        self._run_post_build_actions()
         # self._shutdown_containers()
 
     def rollback(self):
@@ -66,10 +71,11 @@ class DockerUpgrader(object):
         As result here we just shutdown containers
         and run backup of postgresql.
         """
-        self._backup_db()
+        pass
+        # self._backup_db()
 
     def _backup_db(self):
-        logger.debug('Backup database')
+        logger.debug(u'Backup database')
         pg_dump_path = os.path.join(self.working_directory, 'pg_dump_all.sql')
         exec_cmd("su postgres -c 'pg_dumpall' > {0}".format(pg_dump_path))
 
@@ -94,7 +100,7 @@ class DockerUpgrader(object):
         self._remove_new_release_images()
 
         for container in self.new_release_containers:
-            logger.info('Start container building "{0}" with name "{1}"'.format(
+            logger.info(u'Start container building "{0}" with name "{1}"'.format(
                 container['docker_file'], container['name']))
             self.docker_client.build(
                 path=container['docker_file'],
@@ -109,18 +115,84 @@ class DockerUpgrader(object):
         """
         names = [c['name'] for c in self.new_release_containers]
         for container in names:
+            self._delete_containers_for_image(container)
             if self.docker_client.images(name=container):
-                logger.info('Remove image for new version {0}'.format(
+                logger.info(u'Remove image for new version {0}'.format(
                     container))
                 self.docker_client.remove_image(container)
 
-    def _run_migration(self):
-        """Get list of containers which were
-        installed (it can happen in case if upgrade
-        was runned several times).
-        Make and return list of containers to creation.
+    def _delete_containers_for_image(self, image):
+        all_containers = self.docker_client.containers(all=True)
+        containers = filter(
+            # We must use convertation to str because
+            # in some cases Image is integer
+            lambda c: str(c['Image']).startswith(image),
+            all_containers)
+        for container in containers:
+            logger.debug(u'Delete container {0} which depends on image {1}'.format(container['Id'], image))
+            self.docker_client.remove_container(container['Id'])
+
+    def _run_post_build_actions(self):
+        """Run db migration for installed services
         """
-        return
+        logger.debug(u'Run data container')
+        data_container = self.container_by_id('data')
+        # We have to delete container because we
+        # several containers with the same name
+        self._delete_container_if_exist(data_container['id'])
+        data_c = self.docker_client.create_container(
+            data_container['name'],
+            # TODO we can have here problems, we need
+            # to have release specific name for data
+            # container
+            name=data_container['id'],
+            volumes=['/var/lib/postgresql'],
+            command='true')
+
+        # Bind volumes for data container
+        self.docker_client.start(
+            data_container['id'],
+            binds={
+                '/var/lib/postgresql': '/var/lib/postgresql'})
+
+        logger.debug(u'Run postgresql container')
+        pg_container = self.container_by_id('postgresql')
+        pg_c = self.docker_client.create_container(
+            pg_container['name'],
+            volumes_from=data_c['Id'],
+            ports=[5432])
+
+        self.docker_client.start(
+            pg_c['Id'],
+            port_bindings={5432: 5432})
+
+        logger.debug(u'Run db migration for nailgun')
+        nailgun_container = self.container_by_id('nailgun')
+        migration_command = "bash -c '. /opt/nailgun/bin/activate; manage.py migrate upgrade head'"
+        container_info = self.docker_client.create_container(
+            nailgun_container['name'], migration_command)
+
+        self.docker_client.start(container_info['Id'])
+        nailgun_log = self.docker_client.logs(container_info['Id'], stream=True)
+        for log_line in nailgun_log:
+            logger.debug(log_line.rstrip())
+
+        exit_code = self.docker_client.wait(container_info['Id'])
+
+        if exit_code > 0:
+            raise errors.ExecutedErrorNonZeroExitCode(
+                'Failed to execute migraion command "{0}" '
+                'exit code {1} container id {2}'.format(
+                    migration_command, exit_code, container_info['Id']))
+        
+    def _delete_container_if_exist(self, container_id):
+        found_containers = filter(
+            lambda c: u'/{0}'.format(container_id) in c['Names'],
+            self.docker_client.containers(all=True))
+
+        for container in found_containers:
+            logger.debug(u'Delete container {0}'.format(container))
+            self.docker_client.remove_container(container['Id'])
 
     @property
     def new_release_containers(self):
@@ -128,18 +200,31 @@ class DockerUpgrader(object):
         for new release, fuel/container_name/version
         and paths to Dockerfile.
         """
-        container_names = [c[0] for c in config.containers.iteritems()]
         new_containers = []
 
-        for container in container_names:
-            new_container = {}
+        for container in config.containers:
+            new_container = deepcopy(container)
             new_container['name'] = '{0}{1}/{2}'.format(
-                config.container_prefix, container, config.version)
+                config.container_prefix, container['id'], config.version)
             new_container['docker_file'] = os.path.join(
-                self.update_path, container)
+                self.update_path, container['id'])
             new_containers.append(new_container)
 
         return new_containers
+
+    @property
+    def containers_with_post_build_actions(self):
+        return filter(
+            lambda c: c.get('post_build_actions'),
+            self.new_release_containers)
+
+    def container_by_id(self, container_id):
+        return filter(
+            lambda c: c['id'] == container_id,
+            self.new_release_containers)[0]
+
+class FuelUpgrader(object):
+    pass
 
 
 class Upgrade(object):
@@ -180,7 +265,7 @@ class Upgrade(object):
 
     def before_upgrade(self):
         logger.debug('Run before upgrade actions')
-        self.check_upgrade_opportunity()
+        # self.check_upgrade_opportunity()
         self.make_backup()
 
     def upgrade(self):
