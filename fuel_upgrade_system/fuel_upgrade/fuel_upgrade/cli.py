@@ -46,11 +46,6 @@ def parse_args():
         help='path to update file',
         required=True)
 
-    # parser.add_argument(
-    #     '--dst',
-    #     help='working directory',
-    #     required=True)
-
     parser.add_argument(
         '--disable_rollback',
         help='disable rollabck in case of errors',
@@ -64,7 +59,6 @@ def run_upgrade(args):
     """
     upgrader = Upgrade(
         args.src,
-        '', #args.dst,
         DockerUpgrader(args.src),
         disable_rollback=args.disable_rollback)
 

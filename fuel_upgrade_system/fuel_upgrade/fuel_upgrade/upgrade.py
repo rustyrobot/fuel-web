@@ -17,6 +17,7 @@
 import logging
 import os
 import traceback
+import time
 from copy import deepcopy
 
 from docker import Client
@@ -30,16 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 class DockerUpgrader(object):
-    """Puppet implementation of upgrader
+    """Docker management system for upgrades
     """
 
     def __init__(self, update_path):
-        puppet_modules_path = os.path.join(
-            update_path, config.puppet_modules_dir)
-
-        self.puppet_cmd = u'puppet apply --debug --modulepath={0} -e '.format(
-            puppet_modules_path)
-
         self.update_path = update_path
         self.working_directory = os.path.join(
             config.working_directory, config.version)
@@ -53,13 +48,10 @@ class DockerUpgrader(object):
             timeout=config.docker['http_timeout'])
 
     def upgrade(self):
-        # self._upgrade_master_node()
-        # self._build_containers()
-        self._run_post_build_actions()
-        # self._shutdown_containers()
-
-    def rollback(self):
-        exec_cmd(self.puppet_cmd + '"include rollback"')
+        # self.build_images()
+        self.stop_fuel_containers()
+        self.run_post_build_actions()
+        self.stop_fuel_containers()
 
     def backup(self):
         """We don't need to backup containers
@@ -68,14 +60,21 @@ class DockerUpgrader(object):
         and run backup of postgresql.
         """
         pass
-        # self._backup_db()
+        # self.backup_db()
 
-    def _backup_db(self):
+    def backup_db(self):
         logger.debug(u'Backup database')
         pg_dump_path = os.path.join(self.working_directory, 'pg_dump_all.sql')
-        exec_cmd("su postgres -c 'pg_dumpall' > {0}".format(pg_dump_path))
+        try:
+            exec_cmd("su postgres -c 'pg_dumpall' > {0}".format(pg_dump_path))
+        except errors.ExecutedErrorNonZeroExitCode:
+            if os.path.exists(pg_dump_path):
+                logger.info('Remove postgresql dump file because '
+                            'it failed {0}'.format(pg_dump_path))
+                os.remove(pg_dump_path)
+            raise
 
-    def _shutdown_containers(self):
+    def stop_fuel_containers(self):
         """Use docker API to shutdown containers
         """
         containers = self.docker_client.containers(limit=-1)
@@ -84,13 +83,11 @@ class DockerUpgrader(object):
             containers)
 
         for container in containers_to_stop:
+            logger.debug('Stop container: {0}'.format(container))
             self.docker_client.stop(
                 container['Id'], config.docker['stop_container_timeout'])
 
-    def _upgrade_master_node(self):
-        exec_cmd(self.puppet_cmd + '"include master node"')
-
-    def _build_containers(self):
+    def build_images(self):
         """Use docker API to build new containers
         """
         self._remove_new_release_images()
@@ -117,93 +114,94 @@ class DockerUpgrader(object):
                     container))
                 self.docker_client.remove_image(container)
 
-    def _delete_containers_for_image(self, image):
-        all_containers = self.docker_client.containers(all=True)
-        containers = filter(
-            # We must use convertation to str because
-            # in some cases Image is integer
-            lambda c: str(c['Image']).startswith(image),
-            all_containers)
-        for container in containers:
-            logger.debug(u'Delete container {0} which '
-                         'depends on image {1}'.format(container['Id'], image))
-            self.docker_client.remove_container(container['Id'])
-
-    def _run_post_build_actions(self):
+    def run_post_build_actions(self):
         """Run db migration for installed services
         """
-        logger.debug(u'Run data container')
+        logger.info(u'Run data container')
         data_container = self.container_by_id('data')
         # We have to delete container because we
         # several containers with the same name
         self._delete_container_if_exist(data_container['id'])
-        data_c = self.docker_client.create_container(
+        data_container = self.run(
             data_container['name'],
-            # TODO we can have here problems, we need
-            # to have release specific name for data
-            # container
             name=data_container['id'],
             volumes=['/var/lib/postgresql'],
-            command='true')
+            command='true',
+            binds={'/var/lib/postgresql': '/var/lib/postgresql'},
+            detach=True)
 
-        # Bind volumes for data container
-        self.docker_client.start(
-            data_container['id'],
-            binds={
-                '/var/lib/postgresql': '/var/lib/postgresql'})
-
-        logger.debug(u'Run postgresql container')
+        logger.info(u'Run postgresql container')
         pg_container = self.container_by_id('postgresql')
-        pg_c = self.docker_client.create_container(
+        pg_container = self.run(
             pg_container['name'],
-            volumes_from=data_c['Id'],
-            ports=[5432])
+            volumes_from=data_container['Id'],
+            ports=[5432],
+            port_bindings={5432: 5432},
+            detach=True)
 
-        self.docker_client.start(
-            pg_c['Id'],
-            port_bindings={5432: 5432})
-
-        logger.debug(u'Run db migration for nailgun')
+        logger.info(u'Run db migration for nailgun')
         nailgun_container = self.container_by_id('nailgun')
         migration_command = "bash -c '. /opt/nailgun/bin/activate; manage.py migrate upgrade head'"
-        container_info = self.docker_client.create_container(
-            nailgun_container['name'], migration_command)
+        self.run(
+            nailgun_container['name'],
+            command=migration_command,
+            retry_interval=2,
+            retries_count=3)
 
-        self.docker_client.start(container_info['Id'])
-        nailgun_log = self.docker_client.logs(container_info['Id'], stream=True)
-        for log_line in nailgun_log:
-            logger.debug(log_line.rstrip())
+    def run(self, image_name, **kwargs):
+        """Run container from image,
+        the same as `docker run` command.
+        """
+        retries = [None]
+        retry_interval = kwargs.pop('retry_interval', None)
+        retries_count = kwargs.pop('retries_count', None)
+        if retry_interval and retries_count:
+            retries = [retry_interval] * retries_count
 
-        exit_code = self.docker_client.wait(container_info['Id'])
+        params = deepcopy(kwargs)
+        start_command_keys = [
+            'lxc_conf', 'port_bindings', 'binds',
+            'publish_all_ports', 'links', 'privileged']
 
-        if exit_code > 0:
-            raise errors.ExecutedErrorNonZeroExitCode(
-                'Failed to execute migraion command "{0}" '
-                'exit code {1} container id {2}'.format(
-                    migration_command, exit_code, container_info['Id']))
+        start_params = {}
+        for start_command_key in start_command_keys:
+            start_params[start_command_key] = params.pop(
+                start_command_key, None)
 
+        # Create container
+        logger.debug('Create container "{0}": {1}'.format(start_params, params))
+        container = self.docker_client.create_container(image_name, **params)
 
-    def run_container(self, name, **kwargs):
-        data_c = self.docker_client.create_container(
-            name,
-            name=kwargs.get('name'),
-            volumes=kwargs.get('volumes'),
-            command=kwargs.get('command'))
+        # Start container
+        logger.debug('Start container "{0}": {1}'.format(
+            container['Id'], start_params))
+        self.docker_client.start(container['Id'], **start_params)
 
-        self.docker_client.start(
-            data_container['id'],
-            binds={
-                '/var/lib/postgresql': '/var/lib/postgresql'},
-            port_bindings={})
+        if not params.get('detach'):
+            for interval in retries:
 
-    def _delete_container_if_exist(self, container_id):
-        found_containers = filter(
-            lambda c: u'/{0}'.format(container_id) in c['Names'],
-            self.docker_client.containers(all=True))
+                logs = self.docker_client.logs(container['Id'], stream=True)
+                for log_line in logs:
+                    logger.debug(log_line.rstrip())
 
-        for container in found_containers:
-            logger.debug(u'Delete container {0}'.format(container))
-            self.docker_client.remove_container(container['Id'])
+                exit_code = self.docker_client.wait(container['Id'])
+
+                if exit_code == 0:
+                    break
+
+                if interval is not None:
+                    logger.warn('Failed to run container "{0}": {1}',
+                                container['Id'], start_params)
+                    time.sleep(interval)
+                    self.docker_client.start(container['Id'], **start_params)
+            else:
+                if exit_code > 0:
+                    raise errors.ExecutedErrorNonZeroExitCode(
+                        'Failed to execute migraion command "{0}" '
+                        'exit code {1} container id {2}'.format(
+                            params.get('command'), exit_code, container['Id']))
+
+        return container
 
     @property
     def new_release_containers(self):
@@ -223,24 +221,32 @@ class DockerUpgrader(object):
 
         return new_containers
 
-    @property
-    def containers_with_post_build_actions(self):
-        return filter(
-            lambda c: c.get('post_build_actions'),
-            self.new_release_containers)
-
     def container_by_id(self, container_id):
         return filter(
             lambda c: c['id'] == container_id,
             self.new_release_containers)[0]
 
-    @property
-    def new_fuel_images():
-        pass
+    def _delete_container_if_exist(self, container_id):
+        found_containers = filter(
+            lambda c: u'/{0}'.format(container_id) in c['Names'],
+            self.docker_client.containers(all=True))
 
-    @property
-    def old_fuel_images():
-        pass
+        for container in found_containers:
+            logger.debug(u'Delete container {0}'.format(container))
+            self.docker_client.remove_container(container['Id'])
+
+    def _delete_containers_for_image(self, image):
+        all_containers = self.docker_client.containers(all=True)
+        containers = filter(
+            # We must use convertation to str because
+            # in some cases Image is integer
+            lambda c: str(c['Image']) == image,
+            all_containers)
+
+        for container in containers:
+            logger.debug(u'Delete container {0} which '
+                         'depends on image {1}'.format(container['Id'], image))
+            self.docker_client.remove_container(container['Id'])
 
 
 class FuelUpgrader(object):
@@ -257,21 +263,18 @@ class Upgrade(object):
 
     def __init__(self,
                  update_path,
-                 working_dir,
                  upgrade_engine,
                  disable_rollback=False):
 
         logger.debug(
             u'Create Upgrade object with update path "{0}", '
-            'working directory "{1}", '
-            'upgrade engine "{2}", '
-            'disable rollback is "{3}"'.format(
-                update_path, working_dir,
+            'upgrade engine "{1}", '
+            'disable rollback is "{2}"'.format(
+                update_path,
                 upgrade_engine.__class__.__name__,
                 disable_rollback))
 
         self.update_path = update_path
-        self.working_dir = working_dir
         self.upgrade_engine = upgrade_engine
         self.disable_rollback = disable_rollback
 
