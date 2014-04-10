@@ -21,14 +21,20 @@ import traceback
 
 from copy import deepcopy
 
+from mako.template import Template
+
 from docker import Client
 
 from fuel_upgrade.config import config
 from fuel_upgrade import errors
+from fuel_upgrade import utils
 from fuel_upgrade.utils import exec_cmd
 from fuel_upgrade.utils import get_request
+from fuel_upgrade.utils import topological_sorting
 
 logger = logging.getLogger(__name__)
+TEMPLATES_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), 'templates'))
 
 
 class DockerUpgrader(object):
@@ -40,19 +46,29 @@ class DockerUpgrader(object):
         self.working_directory = os.path.join(
             config.working_directory, config.version)
 
-        if not os.path.isdir(self.working_directory):
-            os.makedirs(self.working_directory)
+        utils.create_dir_if_not_exists(self.working_directory)
 
         self.docker_client = Client(
             base_url=config.docker['url'],
             version=config.docker['api_version'],
             timeout=config.docker['http_timeout'])
 
+        self.supervisor_template_path = os.path.join(
+            TEMPLATES_DIR, 'supervisor.conf')
+        self.supervisor_config_dir = os.path.join(
+            config.supervisor['configs_prefix'], config.version)
+
+        utils.create_dir_if_not_exists(self.supervisor_config_dir)
+
     def upgrade(self):
+        # self.stop_fuel_containers()
+        # self.build_images()
+        # self.run_post_build_actions()
         self.stop_fuel_containers()
-        self.build_images()
-        self.run_post_build_actions()
+        self.create_containers()
         self.stop_fuel_containers()
+        self.generate_supervisor_configs()
+        self.switch_to_new_supervisor_configs()
 
     def backup(self):
         """We don't need to backup containers
@@ -60,6 +76,128 @@ class DockerUpgrader(object):
         As result here we run backup of database.
         """
         self.backup_db()
+
+    def create_containers(self):
+        """Create containers in the right order
+        """
+        logger.info('Started containers creation')
+        graph = self.build_dependencies_graph(self.new_release_containers)
+        logger.debug('Built dependencies graph {0}'.format(graph))
+        containers_to_creation = topological_sorting(graph)
+        logger.debug('Resolved creation order {0}'.format(
+            containers_to_creation))
+
+        for container_id in containers_to_creation:
+            container = self.container_by_id(container_id)
+            logger.debug('Started  {0}'.format(container))
+
+            volumes_from = []
+            if container.get('volumes_from'):
+                for container_id in container.get('volumes_from'):
+                    volume_container = self.container_by_id(container_id)
+                    volumes_from.append(volume_container['container_name'])
+
+            links = []
+            if container.get('links'):
+                for container_link in container.get('links'):
+                    link_container = self.container_by_id(container_link['id'])
+                    links.append((link_container['container_name'], container_link['alias']))
+
+            created_container = self.create_container(
+                container['image_name'],
+                name=container.get('container_name'),
+                volumes=container.get('volumes'),
+                volumes_from=','.join(volumes_from),
+                detach=False)
+
+            self.start_container(
+                created_container,
+                port_bindings=container.get('ports'),
+                links=links,
+                binds=container.get('binds'))
+
+    @classmethod
+    def build_dependencies_graph(cls, containers):
+        """Builds graph which based on
+        `volumes_from` and `link` parameters
+        of container.
+
+        :returns: dict where keys are nodes and
+                  values are lists of dependencies
+        """
+        graph = {}
+        for container in containers:
+            graph[container['id']] = list(set(
+                container.get('volumes_from', []) +
+                [link['id'] for link in container.get('links', [])]))
+
+        return graph
+
+    def switch_to_new_supervisor_configs(self):
+        pass
+
+    def generate_supervisor_configs(self):
+        """Generates supervisor configs
+        and saves them to configs directory
+        """
+        logger.info('Generate supervisor configs')
+        with open(self.supervisor_template_path, 'r') as f:
+            template_cfg = f.read()
+
+        for container in self.new_release_containers:
+            config_path = os.path.join(
+                self.supervisor_config_dir,
+                '{0}'.format(container['id']) + '.conf')
+            
+            log_path = '/var/log/{0}/app.log'.format(container['id'])
+            utils.create_dir_if_not_exists(os.path.dirname(log_path))
+            with open(config_path, 'w') as f:
+                params = {
+                    'service_name': container['id'],
+                    # self.run_container_command(container),
+                    'command': 'docker start -a {0}'.format(container['container_name']),
+                    'log_path': log_path
+                }
+                rendered_cfg = Template(template_cfg).render(**params)
+                f.write(rendered_cfg)
+
+    def run_container_command(self, container):
+        volumes_from = ''
+        if container.get('volumes_from'):
+            key = ' -volumes-from '
+            volumes_from = key
+            volumes_from += key.join(self.volumes_dependencies(container))
+
+        link = ''
+        if container.get('link'):
+            key = ' -link '
+            link = key
+            link += key.join([
+                '{0}:{0}'.format(link)
+                for link in self.link_dependencies(container)])
+
+        command = 'bash -c "docker rm {0}; '.format(container['container_name']) + \
+                  'docker run -rm {0} '.format(volumes_from) + \
+                  '{0} '.format(link) + \
+                  '--name {0} '.format(container['container_name']) + \
+                  '{0} "'.format(container['image_name'])
+
+        return command
+
+    def volumes_dependencies(self, container):
+        return self.dependencies_names(container, 'volumes_from')
+
+    def link_dependencies(self, container):
+        return self.dependencies_names(container, 'link')
+
+    def dependencies_names(self, container, key):
+        names = []
+        if container.get(key):
+            for container_id in container.get(key):
+                container = self.container_by_id(container_id)
+                names.append(container['container_name'])
+
+        return names
 
     def backup_db(self):
         """Backup postgresql database
@@ -96,7 +234,7 @@ class DockerUpgrader(object):
     def build_images(self):
         """Use docker API to build new containers
         """
-        self._remove_new_release_images()
+        self.remove_new_release_images()
 
         for container in self.new_release_containers:
             logger.info(u'Start image building: {0}'.format(container))
@@ -110,13 +248,10 @@ class DockerUpgrader(object):
         """
         logger.info(u'Run data container')
         data_container = self.container_by_id('data')
-        # We have to delete container because we
-        # several containers with the same name
-        self._delete_container_if_exist(data_container['id'])
         binded_volumes = dict([(v, v) for v in data_container['volumes']])
-        data_container = self.run(
+        self.run(
             data_container['image_name'],
-            name=data_container['id'],
+            name=data_container['container_name'],
             volumes=data_container['volumes'],
             command=data_container['post_build_command'],
             binds=binded_volumes,
@@ -124,9 +259,9 @@ class DockerUpgrader(object):
 
         logger.info(u'Run postgresql container')
         pg_container = self.container_by_id('postgresql')
-        pg_container = self.run(
+        self.run(
             pg_container['image_name'],
-            volumes_from=data_container['Id'],
+            volumes_from=data_container['container_name'],
             ports=[pg_container['port']],
             port_bindings={pg_container['port']: pg_container['port']},
             detach=True)
@@ -159,15 +294,8 @@ class DockerUpgrader(object):
             start_params[start_command_key] = params.pop(
                 start_command_key, None)
 
-        # Create container
-        logger.debug(
-            u'Create container "{0}": {1}'.format(start_params, params))
-        container = self.docker_client.create_container(image_name, **params)
-
-        # Start container
-        logger.debug(u'Start container "{0}": {1}'.format(
-            container['Id'], start_params))
-        self.docker_client.start(container['Id'], **start_params)
+        container = self.create_container(image_name, **params)
+        self.start_container(container, **start_params)
 
         if not params.get('detach'):
             for interval in retries:
@@ -193,6 +321,29 @@ class DockerUpgrader(object):
 
         return container
 
+    def start_container(self, container, **params):
+        logger.debug(u'Start container "{0}": {1}'.format(
+            container['Id'], params))
+        self.docker_client.start(container['Id'], **params)
+
+    def create_container(self, image_name, **params):
+        """Create container
+
+        :param image_name: name of image
+        :param params: parameters format equals to
+                       create_container call of docker
+                       client
+        """
+        # We have to delete container because we cannot
+        # have several containers with the same name
+        if params.get('name') is not None:
+            self._delete_container_if_exist(params.get('name'))
+
+        logger.debug(u'Create container from image {0}: {1}'.format(
+            image_name, params))
+
+        return self.docker_client.create_container(image_name, **params)
+
     @property
     def new_release_containers(self):
         """Returns list of dicts with images names
@@ -203,7 +354,9 @@ class DockerUpgrader(object):
 
         for container in config.containers:
             new_container = deepcopy(container)
-            new_container['image_name'] = '{0}{1}/{2}'.format(
+            new_container['image_name'] = '{0}{1}_{2}'.format(
+                config.container_prefix, container['id'], config.version)
+            new_container['container_name'] = 'container_{0}{1}_{2}'.format(
                 config.container_prefix, container['id'], config.version)
             new_container['docker_file'] = os.path.join(
                 self.update_path, container['id'])
@@ -288,7 +441,7 @@ class Upgrade(object):
 
     def before_upgrade(self):
         logger.debug('Run before upgrade actions')
-        self.check_upgrade_opportunity()
+        # self.check_upgrade_opportunity()
         self.make_backup()
 
     def upgrade(self):

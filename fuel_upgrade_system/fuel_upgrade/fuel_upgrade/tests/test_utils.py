@@ -24,6 +24,7 @@ from fuel_upgrade import errors
 from fuel_upgrade.tests.base import BaseTestCase
 from fuel_upgrade.utils import exec_cmd
 from fuel_upgrade.utils import get_request
+from fuel_upgrade.utils import topological_sorting
 
 
 class TestUtils(BaseTestCase):
@@ -74,3 +75,30 @@ class TestUtils(BaseTestCase):
             self.assertEquals({'key': 'value'}, json_resp)
 
         urlopen.assert_called_once_with(url)
+
+    def test_topological_sorting(self):
+        graph = {
+            'D': ['C', 'G'],
+            'E': ['A', 'D'],
+            'A': [],
+            'B': ['A'],
+            'C': ['A'],
+            'G': []
+        }
+
+        order = topological_sorting(graph)
+        self.assertEquals(order, ['A', 'C', 'B', 'G', 'D', 'E'])
+
+    def test_topological_sorting_raises_cycle_dependencies_error(self):
+        graph = {
+            'A': ['C', 'D'],
+            'B': ['A'],
+            'C': ['B'],
+            'D': []
+        }
+
+        self.assertRaisesRegexp(
+            errors.CyclicDependenciesError,
+            "Cyclic dependencies error ",
+            topological_sorting,
+            graph)
