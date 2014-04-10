@@ -9,7 +9,11 @@ docker:
   http_timeout: 160
   stop_container_timeout: 160
 
-container_prefix: fuel/
+container_prefix: fuel_
+
+supervisor:
+  configs_prefix: /etc/supervisord.d/
+  current_configs_prefix: /etc/supervisord.d/current
 
 endpoints:
   nailgun:
@@ -19,11 +23,23 @@ endpoints:
 containers:
   - id: nailgun
     post_build_command: "bash -c '. /opt/nailgun/bin/activate; manage.py migrate upgrade head'"
+    ports:
+      8001: 8001
+
+    links:
+      - id: postgresql
+        alias: db
 
   - id: postgresql
-    port: 5432
+    ports:
+      5432: 5432
+    volumes_from:
+      - data
 
   - id: data
     post_build_command: 'true'
     volumes:
       - /var/lib/postgresql
+
+    binds:
+      '/var/lib/postgresql': '/var/lib/postgresql'

@@ -15,8 +15,11 @@
 #    under the License.
 
 import logging
+import os
 import subprocess
 import urllib2
+
+from copy import deepcopy
 
 import json
 
@@ -68,3 +71,37 @@ def get_request(url):
         url, response_code, response_data))
 
     return json.loads(response_data)
+
+
+def topological_sorting(dep_graph):
+    """Implementation of topological sorting algorithm
+    http://en.wikipedia.org/wiki/Topological_sorting
+
+    :param dep_graph: graph of dependencies, where key is
+                      a node and value is a list of dependencies
+    :returns: list of nodes
+    :raises: CyclicDependencies
+    """
+    sorted_nodes = []
+    graph = deepcopy(dep_graph)
+
+    while graph:
+        cyclic = True
+        for node, dependencies in graph.items():
+            for dependency in dependencies:
+                if dependency in graph:
+                    break
+            else:
+                cyclic = False
+                del graph[node]
+                sorted_nodes.append(node)
+
+        if cyclic:
+            raise errors.CyclicDependenciesError(
+                u'Cyclic dependencies error {0}'.format(graph))
+
+    return sorted_nodes
+
+def create_dir_if_not_exists(dir_path):
+    if not os.path.isdir(dir_path):
+        os.makedirs(dir_path)
