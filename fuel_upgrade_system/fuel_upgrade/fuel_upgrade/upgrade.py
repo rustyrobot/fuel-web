@@ -61,9 +61,9 @@ class DockerUpgrader(object):
         utils.create_dir_if_not_exists(self.supervisor_config_dir)
 
     def upgrade(self):
-        # self.stop_fuel_containers()
-        # self.build_images()
-        # self.run_post_build_actions()
+        self.stop_fuel_containers()
+        self.build_images()
+        self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()
         self.stop_fuel_containers()
@@ -75,7 +75,8 @@ class DockerUpgrader(object):
         because we don't remove current version.
         As result here we run backup of database.
         """
-        self.backup_db()
+        pass
+        # self.backup_db()
 
     def create_containers(self):
         """Create containers in the right order
@@ -112,7 +113,7 @@ class DockerUpgrader(object):
 
             self.start_container(
                 created_container,
-                port_bindings=container.get('ports'),
+                port_bindings=container.get('port_bindings'),
                 links=links,
                 binds=container.get('binds'))
 
@@ -134,7 +135,12 @@ class DockerUpgrader(object):
         return graph
 
     def switch_to_new_supervisor_configs(self):
-        pass
+        current_cfg_path = config.supervisor['current_configs_prefix']
+        if os.path.exists(current_cfg_path):
+            os.remove(current_cfg_path)
+            os.symlink(
+                self.supervisor_config_dir,
+                current_cfg_path)
 
     def generate_supervisor_configs(self):
         """Generates supervisor configs
@@ -154,7 +160,6 @@ class DockerUpgrader(object):
             with open(config_path, 'w') as f:
                 params = {
                     'service_name': container['id'],
-                    # self.run_container_command(container),
                     'command': 'docker start -a {0}'.format(container['container_name']),
                     'log_path': log_path
                 }
@@ -223,7 +228,7 @@ class DockerUpgrader(object):
         """
         containers = self.docker_client.containers(limit=-1)
         containers_to_stop = filter(
-            lambda c: c['Image'].startswith(config.container_prefix),
+            lambda c: c['Image'].startswith(config.image_prefix),
             containers)
 
         for container in containers_to_stop:
@@ -262,8 +267,8 @@ class DockerUpgrader(object):
         self.run(
             pg_container['image_name'],
             volumes_from=data_container['container_name'],
-            ports=[pg_container['port']],
-            port_bindings={pg_container['port']: pg_container['port']},
+            ports=pg_container['ports'],
+            port_bindings=pg_container['port_bindings'],
             detach=True)
 
         logger.info(u'Run db migration for nailgun')
@@ -354,9 +359,9 @@ class DockerUpgrader(object):
 
         for container in config.containers:
             new_container = deepcopy(container)
-            new_container['image_name'] = '{0}{1}_{2}'.format(
-                config.container_prefix, container['id'], config.version)
-            new_container['container_name'] = 'container_{0}{1}_{2}'.format(
+            new_container['image_name'] = '{0}{1}/{2}'.format(
+                config.image_prefix, container['id'], config.version)
+            new_container['container_name'] = '{0}{1}_{2}'.format(
                 config.container_prefix, container['id'], config.version)
             new_container['docker_file'] = os.path.join(
                 self.update_path, container['id'])
@@ -401,6 +406,9 @@ class DockerUpgrader(object):
             all_containers)
 
         for container in containers:
+            logger.debug(u'Try to stop container {0} which '
+                         'depends on image {1}'.format(container['Id'], image))
+            self.docker_client.stop(container['Id'])
             logger.debug(u'Delete container {0} which '
                          'depends on image {1}'.format(container['Id'], image))
             self.docker_client.remove_container(container['Id'])
