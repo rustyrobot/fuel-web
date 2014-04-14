@@ -2,6 +2,7 @@ version: '5.1'
 working_directory: /var/lib/fuel_upgrade/
 log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
+images_extension: tar.xz
 
 docker:
   url: unix://var/run/docker.sock
@@ -15,11 +16,19 @@ container_prefix: fuel_
 supervisor:
   configs_prefix: /etc/supervisord.d/
   current_configs_prefix: /etc/supervisord.d/current
+  endpoint: 'unix:///var/run/supervisor.sock'
+  group_name: fuel
+  restart_timeout: 300
 
 endpoints:
   nailgun:
     port: 8000
     host: 127.0.0.1
+
+images:
+  - id: nailgun
+  - id: postgresql
+  - id: data
 
 containers:
   - id: nailgun

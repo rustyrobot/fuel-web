@@ -18,10 +18,12 @@ import logging
 import os
 import subprocess
 import urllib2
+import json
+import time
 
 from copy import deepcopy
 
-import json
+from mako.template import Template
 
 from fuel_upgrade import errors
 
@@ -102,6 +104,47 @@ def topological_sorting(dep_graph):
 
     return sorted_nodes
 
+
 def create_dir_if_not_exists(dir_path):
+    """Creates directory if it doesn't exist
+
+    :param dir_path: directory path
+    """
     if not os.path.isdir(dir_path):
         os.makedirs(dir_path)
+
+
+def render_template_to_file(src, dst, params):
+    """Render mako template and write it to specified file
+
+    :param src: path to template
+    :param dst: path where rendered template will be saved
+    """
+    logger.debug('Render template from {0} to {1} with params: {2}'.format(
+        src, dst, params))
+    with open(src, 'r') as f:
+        template_cfg = f.read()
+
+    with open(dst, 'w') as f:
+        rendered_cfg = Template(template_cfg).render(**params)
+        f.write(rendered_cfg)
+
+
+def wait_for_true(check, timeout=60):
+    """Execute command with retries
+
+    :param check: callable object
+    :param timeout: timeout
+    :returns: result of call method
+
+    :raises TimeoutError:
+    """
+    start_time = time.time()
+
+    while True:
+        result = check()
+        if result:
+            return result
+        if time.time() - start_time > timeout:
+            raise TimeoutError(error_message)
+        time.sleep(0.1)
