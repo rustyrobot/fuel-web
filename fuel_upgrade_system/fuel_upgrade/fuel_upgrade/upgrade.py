@@ -413,7 +413,7 @@ class DockerUpgrader(object):
         return new_images
 
     def make_image_name(self, name):
-        return u'{0}{1}:{2}'.format(
+        return u'{0}{1}_{2}'.format(
             config.image_prefix, name, config.version)
 
     def container_by_id(self, container_id):
@@ -431,7 +431,6 @@ class DockerUpgrader(object):
         and we have to delete images before images
         building
         """
-
         image_names = [c['name'] for c in self.new_release_images]
         for image in image_names:
             self._delete_containers_for_image(image)
@@ -439,24 +438,6 @@ class DockerUpgrader(object):
                 logger.info(u'Remove image for new version {0}'.format(
                     container))
                 self.docker_client.remove_image(image)
-
-        names = [c['name'] for c in self.new_release_images]
-        for image in names:
-            images_info = filter(
-                lambda i: image in i['RepoTags'],
-                self.docker_client.images())
-
-            print '-' * 30
-            print image
-            print self.docker_client.images()
-
-            if images_info:
-                self._delete_containers_for_image(image)
-                self.docker_client.remove_image(image)
-            # for image_info in images_info:
-            #     logger.info(u'Remove image for new version {0}'.format(
-            #         image))
-            #     self.docker_client.remove_image(image_info['Id'])
 
     def _delete_container_if_exist(self, container_id):
         """Deletes docker container if it exists
@@ -478,14 +459,10 @@ class DockerUpgrader(object):
         """
         all_containers = self.docker_client.containers(all=True)
 
-        print '*' * 30
-        print image
-        print all_containers
-
         containers = filter(
-            # We must use convertation to str because
-            # in some cases Image is integer
-            lambda c: str(c.get('Image')) == image,
+            # NOTE(eli) :We must use convertation to
+            # str because in some cases Image is integer
+            lambda c: str(c.get('Image')).startswith(image),
             all_containers)
 
         for container in containers:

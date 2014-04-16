@@ -18,7 +18,7 @@ supervisor:
   current_configs_prefix: /etc/supervisord.d/current
   endpoint: 'unix:///var/run/supervisor.sock'
   group_name: fuel
-  restart_timeout: 300
+  restart_timeout: 150
 
 endpoints:
   nailgun:
