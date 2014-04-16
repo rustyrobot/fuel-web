@@ -22,6 +22,8 @@ import traceback
 
 from copy import deepcopy
 
+import requests
+
 from docker import Client
 
 from fuel_upgrade.config import config
@@ -60,7 +62,7 @@ class DockerUpgrader(object):
     def upgrade(self):
         """Method with upgarde logic
         """
-        self.supervisor.stop_fuel_services()
+        self.supervisor.stop_all_services()
         self.stop_fuel_containers()
         # self.upload_images()
         self.build_images()
@@ -84,14 +86,14 @@ class DockerUpgrader(object):
             logger.debug(u'Try to upload docker image {0}'.format(image))
 
             docker_image = image['docker_image']
-            if not os.path.exists():
+            if not os.path.exists(docker_image):
                 logger.warn(u'Cannot find docker image "{0}"'.format(docker_image))
                 continue
             # TODO(eli): maybe it will be better to
             # use docker api here, but in this case
             # we need extra dependencies here to
             # uncompress containers
-            utils.exec_cmd(u'xz -dkc "{0}" | docker load - {1}'.format(
+            utils.exec_cmd(u'xz -dkc "{0}" | docker load'.format(
                 docker_image, image['name']))
 
     def backup(self):
@@ -167,7 +169,7 @@ class DockerUpgrader(object):
         for container in self.new_release_containers:
             params = {
                 'service_name': container['id'],
-                'command': 'docker start -a {0}'.format(
+                'command': u'docker start -a {0}'.format(
                     container['container_name'])
             }
             configs.append(params)
@@ -220,7 +222,7 @@ class DockerUpgrader(object):
             return
 
         try:
-            exec_cmd(u"su postgres -c 'pg_dumpall' > {0}".format(pg_dump_path))
+            exec_cmd(u"su postgres -c 'pg_dumpall' > '{0}'".format(pg_dump_path))
         except errors.ExecutedErrorNonZeroExitCode:
             if os.path.exists(pg_dump_path):
                 logger.info(u'Remove postgresql dump file because '
@@ -238,8 +240,21 @@ class DockerUpgrader(object):
 
         for container in containers_to_stop:
             logger.debug(u'Stop container: {0}'.format(container))
-            self.docker_client.stop(
-                container['Id'], config.docker['stop_container_timeout'])
+
+            try:
+                self.docker_client.stop(
+                    container['Id'], config.docker['stop_container_timeout'])
+            except requests.exceptions.Timeout:
+                # NOTE(eli): docker use SIGTERM signal
+                # to stop container if timeout expired
+                # docker use SIGKILL to stop container.
+                # Here we just want to make sure that
+                # container was stopped.
+                logger.warn(
+                    u'Couldn\'t stop ctonainer, try '
+                    'to stop it again: {0}'.format(container))
+                self.docker_client.stop(
+                    container['Id'], config.docker['stop_container_timeout'])
 
     def build_images(self):
         """Use docker API to build new containers
@@ -370,7 +385,7 @@ class DockerUpgrader(object):
             new_container = deepcopy(container)
             new_container['image_name'] = self.make_image_name(
                 container['from_image'])
-            new_container['container_name'] = '{0}{1}_{2}'.format(
+            new_container['container_name'] = u'{0}{1}_{2}'.format(
                 config.container_prefix, container['id'], config.version)
             new_containers.append(new_container)
 
@@ -398,7 +413,7 @@ class DockerUpgrader(object):
         return new_images
 
     def make_image_name(self, name):
-        return '{0}{1}/{2}'.format(
+        return u'{0}{1}:{2}'.format(
             config.image_prefix, name, config.version)
 
     def container_by_id(self, container_id):
@@ -416,13 +431,32 @@ class DockerUpgrader(object):
         and we have to delete images before images
         building
         """
-        names = [c['name'] for c in self.new_release_images]
-        for image in names:
+
+        image_names = [c['name'] for c in self.new_release_images]
+        for image in image_names:
             self._delete_containers_for_image(image)
             if self.docker_client.images(name=image):
                 logger.info(u'Remove image for new version {0}'.format(
-                    image))
+                    container))
                 self.docker_client.remove_image(image)
+
+        names = [c['name'] for c in self.new_release_images]
+        for image in names:
+            images_info = filter(
+                lambda i: image in i['RepoTags'],
+                self.docker_client.images())
+
+            print '-' * 30
+            print image
+            print self.docker_client.images()
+
+            if images_info:
+                self._delete_containers_for_image(image)
+                self.docker_client.remove_image(image)
+            # for image_info in images_info:
+            #     logger.info(u'Remove image for new version {0}'.format(
+            #         image))
+            #     self.docker_client.remove_image(image_info['Id'])
 
     def _delete_container_if_exist(self, container_id):
         """Deletes docker container if it exists
@@ -443,10 +477,15 @@ class DockerUpgrader(object):
         :param image: name of image
         """
         all_containers = self.docker_client.containers(all=True)
+
+        print '*' * 30
+        print image
+        print all_containers
+
         containers = filter(
             # We must use convertation to str because
             # in some cases Image is integer
-            lambda c: str(c['Image']).startswith(image),
+            lambda c: str(c.get('Image')) == image,
             all_containers)
 
         for container in containers:

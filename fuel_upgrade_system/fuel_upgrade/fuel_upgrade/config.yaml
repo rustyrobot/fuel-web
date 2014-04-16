@@ -6,9 +6,9 @@ images_extension: tar.xz
 
 docker:
   url: unix://var/run/docker.sock
-  api_version: '1.9'
+  api_version: '1.10'
   http_timeout: 160
-  stop_container_timeout: 160
+  stop_container_timeout: 300
 
 image_prefix: fuel/
 container_prefix: fuel_
@@ -24,6 +24,24 @@ endpoints:
   nailgun:
     port: 8000
     host: 127.0.0.1
+
+# images:
+#   - id: astute
+#   - id: cobbler
+#   - id: dump
+#   - id: mcollectived
+#   - id: nginx
+#   - id: ostf
+#   - id: postgres
+#   - id: puppet
+#   - id: rabbitmq
+#   - id: repo
+#   - id: rsync
+#   - id: rsyslog
+#   - id: nailgun
+#   - id: storage-dump
+#   - id: storage-puppet
+#   - id: storage-repo
 
 images:
   - id: nailgun

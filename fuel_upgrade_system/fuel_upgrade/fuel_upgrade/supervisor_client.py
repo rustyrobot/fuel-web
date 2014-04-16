@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'templates'))
 
+import httplib
+import socket
+
 
 class SupervisorClient(object):
 
@@ -69,11 +72,17 @@ class SupervisorClient(object):
                 current_cfg_path)
 
     def stop_fuel_services(self):
-        """Reloads supervisor configs
+        """Stops group of processes
         """
         group_name = config.supervisor['group_name']
         logger.info(u'Stop processes for "{0}" group'.format(group_name))
         self.supervisor.stopProcessGroup(group_name)
+
+    def stop_all_services(self):
+        """Stops all processes
+        """
+        logger.info(u'Stop all processes')
+        self.supervisor.stopAllProcesses()
 
     def restart_and_wait(self):
         """Restart supervisor and wait untill it will be available
