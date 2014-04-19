@@ -64,8 +64,7 @@ class DockerUpgrader(object):
         """
         self.supervisor.stop_all_services()
         self.stop_fuel_containers()
-        # self.upload_images()
-        self.build_images()
+        self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()
@@ -255,18 +254,6 @@ class DockerUpgrader(object):
                     'to stop it again: {0}'.format(container))
                 self.docker_client.stop(
                     container['Id'], config.docker['stop_container_timeout'])
-
-    def build_images(self):
-        """Use docker API to build new containers
-        """
-        self.remove_new_release_images()
-
-        for image in self.new_release_images:
-            logger.info(u'Start image building: {0}'.format(image))
-            self.docker_client.build(
-                path=image['docker_file'],
-                tag=image['name'],
-                nocache=True)
 
     def run_post_build_actions(self):
         """Run db migration for installed services
@@ -472,6 +459,52 @@ class DockerUpgrader(object):
             logger.debug(u'Delete container {0} which '
                          'depends on image {1}'.format(container['Id'], image))
             self.docker_client.remove_container(container['Id'])
+
+
+class DockerInitializer(DockerUpgrader):
+    """Logic for docker containers installation
+    on new system. Used for development.
+    """
+
+    def upgrade(self):
+        self.build_images()
+        self.run_post_build_actions()
+        self.stop_fuel_containers()
+        self.create_containers()
+        self.stop_fuel_containers()
+        self.generate_configs()
+        self.switch_to_new_configs()
+
+        # Reload configs and run new services
+        self.supervisor.restart_and_wait()
+
+    def build_images(self):
+        """Use docker API to build new containers
+        """
+        self.remove_new_release_images()
+
+        for image in self.new_release_images:
+            logger.info(u'Start image building: {0}'.format(image))
+            self.docker_client.build(
+                path=image['docker_file'],
+                tag=image['name'],
+                nocache=True)
+
+            # NOTE(eli): 0.10 and early versions of
+            # Docker api dont't return correct http
+            # response in case of failed build, here
+            # we check if build succed and raise error
+            # if it failed i.e. image was not created
+            if not self.docker_client.images(name=image):
+                raise errors.DockerFailedToBuildImageError(
+                    u'Failed to build image {0}'.format(image))
+
+    def rollback(self):
+        logger.warn(u"DockerInitializer doesn't support rollback")
+
+    def make_backup(self):
+        logger.warn(u"DockerInitializer doesn't support rollback")
+
 
 
 class Upgrade(object):

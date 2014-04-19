@@ -24,6 +24,7 @@ logger = configure_logger(config.log_path)
 
 from fuel_upgrade import errors
 from fuel_upgrade.upgrade import DockerUpgrader
+from fuel_upgrade.upgrade import DockerInitializer
 from fuel_upgrade.upgrade import Upgrade
 
 
@@ -49,7 +50,12 @@ def parse_args():
     parser.add_argument(
         '--disable_rollback',
         help='disable rollabck in case of errors',
-        action='store_false')
+        action='store_true')
+
+    parser.add_argument(
+        '--docker_initialize',
+        help='disable rollabck in case of errors',
+        action='store_true')
 
     return parser.parse_args()
 
@@ -57,9 +63,14 @@ def parse_args():
 def run_upgrade(args):
     """Run upgrade on master node
     """
+    if args.docker_initialize:
+        engine = DockerInitializer(args.src)
+    else:
+        engine = DockerUpgrader(args.src)
+
     upgrader = Upgrade(
         args.src,
-        DockerUpgrader(args.src),
+        engine,
         disable_rollback=args.disable_rollback)
 
     upgrader.run()

@@ -29,5 +29,9 @@ class DockerExecutedErrorNonZeroExitCode(FuelUpgradeException):
     pass
 
 
+class DockerFailedToBuildImageError(FuelUpgradeException):
+    pass
+
+
 class CyclicDependenciesError(FuelUpgradeException):
     pass

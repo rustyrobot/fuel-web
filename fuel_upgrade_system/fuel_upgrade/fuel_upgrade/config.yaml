@@ -1,4 +1,4 @@
-version: '5.1'
+version: '5.0'
 working_directory: /var/lib/fuel_upgrade/
 log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
@@ -25,28 +25,52 @@ endpoints:
     port: 8000
     host: 127.0.0.1
 
+images:
+  - id: astute
+  # - id: cobbler
+  # # - id: dump
+
+  # # for debuuging
+  # - id: data
+  # - id: mcollective
+  # - id: nginx
+  # - id: ostf
+  # - id: postgres
+  # # - id: puppet
+  # - id: rabbitmq
+  # # - id: repo
+  # - id: rsync
+  # - id: rsyslog
+  # - id: nailgun
+  # # - id: storage-dump
+  # # - id: storage-puppet
+  # # - id: storage-repo
+
 # images:
 #   - id: astute
 #   - id: cobbler
-#   - id: dump
-#   - id: mcollectived
+#   # - id: dump
+
+#   # for debuuging
+#   - id: data
+#   - id: mcollective
 #   - id: nginx
 #   - id: ostf
 #   - id: postgres
-#   - id: puppet
+#   # - id: puppet
 #   - id: rabbitmq
-#   - id: repo
+#   # - id: repo
 #   - id: rsync
 #   - id: rsyslog
 #   - id: nailgun
-#   - id: storage-dump
-#   - id: storage-puppet
-#   - id: storage-repo
+#   # - id: storage-dump
+#   # - id: storage-puppet
+#   # - id: storage-repo
 
-images:
-  - id: nailgun
-  - id: postgresql
-  - id: data
+# images:
+#   - id: nailgun
+#   - id: postgresql
+#   - id: data
 
 containers:
   - id: nailgun
@@ -59,9 +83,25 @@ containers:
     links:
       - id: postgresql
         alias: db
+      - id: rabbimq
+        alias: rabbimq
+
+  - id: assasind
+    from_image: nailgun
+    command: 'trololo'
+    post_build_command: "bash -c '. /opt/nailgun/bin/activate; manage.py migrate upgrade head'"
+    port_bindings:
+      8001: 8001
+    ports:
+      - 8001
+    links:
+      - id: postgresql
+        alias: db
+      - id: rabbimq
+        alias: rabbimq
 
   - id: postgresql
-    from_image: postgresql
+    from_image: postgres
     port_bindings:
       5432:
         - '127.0.0.1'
