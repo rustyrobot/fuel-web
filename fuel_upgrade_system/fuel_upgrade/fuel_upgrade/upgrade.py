@@ -88,12 +88,11 @@ class DockerUpgrader(object):
             if not os.path.exists(docker_image):
                 logger.warn(u'Cannot find docker image "{0}"'.format(docker_image))
                 continue
-            # TODO(eli): maybe it will be better to
-            # use docker api here, but in this case
-            # we need extra dependencies here to
-            # uncompress containers
-            utils.exec_cmd(u'xz -dkc "{0}" | docker load'.format(
-                docker_image, image['name']))
+            # NOTE(eli): docker-py binding
+            # doesn't have equal call for
+            # image importing which equal to
+            # `docker load`
+            utils.exec_cmd(u'docker load < "{0}"'.format(docker_image))
 
     def backup(self):
         """We don't need to backup containers
@@ -180,6 +179,27 @@ class DockerUpgrader(object):
         """
         self.supervisor.switch_to_new_configs()
 
+    def build_images(self):
+        """Use docker API to build new containers
+        """
+        self.remove_new_release_images()
+
+        for image in self.new_release_images:
+            logger.info(u'Start image building: {0}'.format(image))
+            self.docker_client.build(
+                path=image['docker_file'],
+                tag=image['name'],
+                nocache=True)
+
+            # NOTE(eli): 0.10 and early versions of
+            # Docker api dont't return correct http
+            # response in case of failed build, here
+            # we check if build succed and raise error
+            # if it failed i.e. image was not created
+            if not self.docker_client.images(name=image):
+                raise errors.DockerFailedToBuildImageError(
+                    u'Failed to build image {0}'.format(image))
+
     def volumes_dependencies(self, container):
         """Get list of `volumes` dependencies
 
@@ -258,14 +278,14 @@ class DockerUpgrader(object):
     def run_post_build_actions(self):
         """Run db migration for installed services
         """
-        logger.info(u'Run data container')
-        data_container = self.container_by_id('data')
-        binded_volumes = dict([(v, v) for v in data_container['volumes']])
+        logger.info(u'Run volume_db container')
+        volume_container = self.container_by_id('volume_db')
+        binded_volumes = dict([(v, v) for v in volume_container['volumes']])
         self.run(
-            data_container['image_name'],
-            name=data_container['container_name'],
-            volumes=data_container['volumes'],
-            command=data_container['post_build_command'],
+            volume_container['image_name'],
+            name=volume_container['container_name'],
+            volumes=volume_container['volumes'],
+            command=volume_container['post_build_command'],
             binds=binded_volumes,
             detach=True)
 
@@ -273,7 +293,7 @@ class DockerUpgrader(object):
         pg_container = self.container_by_id('postgresql')
         self.run(
             pg_container['image_name'],
-            volumes_from=data_container['container_name'],
+            volumes_from=volume_container['container_name'],
             ports=pg_container['ports'],
             port_bindings=pg_container['port_bindings'],
             detach=True)
@@ -467,7 +487,7 @@ class DockerInitializer(DockerUpgrader):
     """
 
     def upgrade(self):
-        self.build_images()
+        # self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()
@@ -478,33 +498,11 @@ class DockerInitializer(DockerUpgrader):
         # Reload configs and run new services
         self.supervisor.restart_and_wait()
 
-    def build_images(self):
-        """Use docker API to build new containers
-        """
-        self.remove_new_release_images()
-
-        for image in self.new_release_images:
-            logger.info(u'Start image building: {0}'.format(image))
-            self.docker_client.build(
-                path=image['docker_file'],
-                tag=image['name'],
-                nocache=True)
-
-            # NOTE(eli): 0.10 and early versions of
-            # Docker api dont't return correct http
-            # response in case of failed build, here
-            # we check if build succed and raise error
-            # if it failed i.e. image was not created
-            if not self.docker_client.images(name=image):
-                raise errors.DockerFailedToBuildImageError(
-                    u'Failed to build image {0}'.format(image))
-
     def rollback(self):
         logger.warn(u"DockerInitializer doesn't support rollback")
 
     def make_backup(self):
         logger.warn(u"DockerInitializer doesn't support rollback")
-
 
 
 class Upgrade(object):
