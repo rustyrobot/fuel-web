@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 #    Copyright 2013 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,8 +11,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
-from __future__ import unicode_literals
 
 import logging
 import os
@@ -60,8 +56,13 @@ def execute(command, to_filename=None):
     process = []
     for c in commands:
         try:
+            # NOTE(eli): Python's shlex implementation doesn't like unicode.
+            # We have to convert to ascii before shlex'ing the command.
+            # http://bugs.python.org/issue6988
+            encoded_command = c.encode('ascii')
+
             process.append(subprocess.Popen(
-                shlex.split(c),
+                shlex.split(encoded_command),
                 env=env,
                 stdin=(process[-1].stdout if process else None),
                 stdout=(to_file
