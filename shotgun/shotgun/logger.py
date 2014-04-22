@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #    Copyright 2013 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -13,6 +15,8 @@
 #    under the License.
 
 import logging
+
+from __future__ import unicode_literals
 
 
 def configure_logger():

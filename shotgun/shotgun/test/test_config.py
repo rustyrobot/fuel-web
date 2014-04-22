@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #    Copyright 2013 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -20,6 +22,8 @@ except ImportError:
 from mock import patch
 import re
 import time
+
+from __future__ import unicode_literals
 
 from shotgun.config import Config
 

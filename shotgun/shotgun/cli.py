@@ -18,6 +18,8 @@ import argparse
 import json
 import logging
 
+from __future__ import unicode_literals
+
 from shotgun.logger import configure_logger
 configure_logger()
 
@@ -64,7 +66,7 @@ def make_snapshot(args):
     config_object = Config(read_config(args.config))
     manager = Manager(config_object)
     snapshot_path = manager.snapshot()
-    logger.info(u'Snapshot path: {0}'.format(snapshot_path))
+    logger.info('Snapshot path: {0}'.format(snapshot_path))
 
 
 def main():

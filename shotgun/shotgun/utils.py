@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #    Copyright 2013 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -18,6 +20,8 @@ import re
 import shlex
 import socket
 import subprocess
+
+from __future__ import unicode_literals
 
 
 logger = logging.getLogger(__name__)
@@ -66,7 +70,7 @@ def execute(command, to_filename=None):
                 stderr=(subprocess.PIPE)
             ))
         except OSError as e:
-            return (1, "", "%s\n" % str(e))
+            return (1, "", "{0}\n".format(e))
 
         if len(process) >= 2:
             process[-2].stdout.close()

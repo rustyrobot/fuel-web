@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #    Copyright 2013 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -14,6 +16,8 @@
 
 import logging
 import os
+
+from __future__ import unicode_literals
 
 from shotgun.driver import Driver
 from shotgun.utils import execute
@@ -40,5 +44,5 @@ class Manager(object):
                           os.path.basename(self.conf.target)))
         execute("rm -r {0}".format(self.conf.target))
         with open(self.conf.lastdump, "w") as fo:
-            fo.write("%s.tgz" % self.conf.target)
-        return "%s.tgz" % self.conf.target
+            fo.write("{0}.tgz".format(self.conf.target))
+        return "{0}.tgz".format(self.conf.target)
