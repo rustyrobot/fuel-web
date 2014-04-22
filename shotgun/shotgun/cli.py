@@ -14,11 +14,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import unicode_literals
+
 import argparse
 import json
 import logging
-
-from __future__ import unicode_literals
 
 from shotgun.logger import configure_logger
 configure_logger()

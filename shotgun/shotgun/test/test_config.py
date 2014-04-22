@@ -14,6 +14,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import unicode_literals
+
 try:
     from unittest.case import TestCase
 except ImportError:
@@ -22,8 +24,6 @@ except ImportError:
 from mock import patch
 import re
 import time
-
-from __future__ import unicode_literals
 
 from shotgun.config import Config
 

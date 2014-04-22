@@ -14,10 +14,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import unicode_literals
+
 import logging
 import os
-
-from __future__ import unicode_literals
 
 from shotgun.driver import Driver
 from shotgun.utils import execute

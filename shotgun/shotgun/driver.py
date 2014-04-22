@@ -14,14 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import unicode_literals
+
 import fnmatch
 import logging
 import os
 import re
 import stat
 import tempfile
-
-from __future__ import unicode_literals
 
 import fabric.api
 

@@ -14,14 +14,14 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from __future__ import unicode_literals
+
 import logging
 import os
 import re
 import shlex
 import socket
 import subprocess
-
-from __future__ import unicode_literals
 
 
 logger = logging.getLogger(__name__)

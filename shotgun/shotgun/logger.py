@@ -14,9 +14,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import logging
-
 from __future__ import unicode_literals
+
+import logging
 
 
 def configure_logger():
