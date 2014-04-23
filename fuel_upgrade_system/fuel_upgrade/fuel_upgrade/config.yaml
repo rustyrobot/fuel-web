@@ -8,7 +8,7 @@ docker:
   url: unix://var/run/docker.sock
   api_version: '1.10'
   http_timeout: 160
-  stop_container_timeout: 300
+  stop_container_timeout: 5
 
 image_prefix: fuel/
 container_prefix: fuel_
@@ -17,7 +17,7 @@ supervisor:
   configs_prefix: /etc/supervisord.d/
   current_configs_prefix: /etc/supervisord.d/current
   endpoint: 'unix:///var/run/supervisor.sock'
-  group_name: fuel
+  group_name: all
   restart_timeout: 150
 
 endpoints:
@@ -41,35 +41,137 @@ images:
 containers:
   - id: nailgun
     from_image: nailgun
-    post_build_command: "bash -c '. /opt/nailgun/bin/activate; manage.py migrate upgrade head'"
+    post_build_command: "manage.py migrate upgrade head"
     port_bindings:
-      8001: 8001
+      8001:
+        - '0.0.0.0'
+        - 8001
     ports:
       - 8001
     links:
       - id: postgresql
         alias: db
-      - id: rabbimq
-        alias: rabbimq
+      - id: rabbitmq
+        alias: rabbitmq
 
-    '/opt/fuel_plugins/ostf/bin/ostf-server --host=127.0.0.1 --port=8777 --log_file=/var/log/ostf.log --dbpath postgresql+psycopg2://ostf:ostf@127.0.0.1:5432/ostf'
+  - id: astute
+    from_image: astute
 
-  - id: assassind
-    from_image: nailgun
-    command: 'assassind'
+  - id: cobbler
+    from_image: cobbler
+    privileged: true
     port_bindings:
-      8001: 8001
+      '53/udp':
+        - '0.0.0.0'
+        - 53
+      '69/udp':
+        - '0.0.0.0'
+        - 69
+      80:
+        - '0.0.0.0'
+        - 80
+      443:
+        - '0.0.0.0'
+        - 443
     ports:
-      - 8001
+      - 53
+      - 69
+      - 80
+      - 443
+
+  - id: mcollective
+    from_image: mcollective
+    privileged: true
+    # TODO Add dir to logs
+
+  - id: rsync
+    from_image: rsync
+    port_bindings:
+      873:
+        - '0.0.0.0'
+        - 873
+    ports:
+      - 873
+    # TODO Add dir
+
+  - id: rsyslog
+    from_image: rsyslog
+    port_bindings:
+      514:
+        - '0.0.0.0'
+        - 514
+      '514/udp':
+        - '0.0.0.0'
+        - 514
+    ports:
+      - [514, 'udp']
+      - 514
+    # TODO Add dir
+
+  - id: nginx
+    from_image: nginx
+    port_bindings:
+      8000:
+        - '0.0.0.0'
+        - 8000
+      8080:
+        - '0.0.0.0'
+        - 8080
+    ports:
+      - 8000
+      - 8080
+
+    links:
+      - id: nailgun
+        alias: nailgun
+      - id: ostf
+        alias: ostf
+    volumes_from:
+      - volume_repos
+
+  - id: rabbitmq
+    from_image: rabbitmq
+    port_bindings:
+      5672:
+        - '0.0.0.0'
+        - 5672
+      4369:
+        - '0.0.0.0'
+        - 4369
+      15672:
+        - '0.0.0.0'
+        - 15672
+      61613:
+        - '0.0.0.0'
+        - 61613
+    ports:
+      - 5672
+      - 4369
+      - 15672
+      - 61613
+
+  - id: ostf
+    from_image: ostf
+    # FIXME(eli): Remove hardcoded endpoints 10.20.0.2:5432
+    # right we have a problem
+    post_build_command: 'ostf-server --host=127.0.0.1 --port=8777 --log_file=/var/log/ostf.log --dbpath postgresql+psycopg2://ostf:ostf@10.20.0.2:5432/ostf --after-initialization-environment-hook'
+    port_bindings:
+      8777:
+        - '0.0.0.0'
+        - 8777
+    ports:
+      - 8777
     links:
       - id: postgresql
         alias: db
+      - id: rabbitmq
+        alias: rabbitmq
 
   - id: postgresql
     from_image: postgres
     port_bindings:
       5432:
-        - '127.0.0.1'
+        - '0.0.0.0'
         - 5432
     ports:
       - 5432
@@ -83,3 +185,11 @@ containers:
       - /var/lib/pgsql
     binds:
       '/var/lib/pgsql': '/var/lib/pgsql'
+
+  - id: volume_repos
+    from_image: busybox
+    post_build_command: 'true'
+    volumes:
+      - /var/www/nailgun
+    binds:
+      '/var/www/nailgun': '/var/www/nailgun'

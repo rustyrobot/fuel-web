@@ -35,3 +35,7 @@ class DockerFailedToBuildImageError(FuelUpgradeException):
 
 class CyclicDependenciesError(FuelUpgradeException):
     pass
+
+
+class CannotFindContainerError(FuelUpgradeException):
+    pass

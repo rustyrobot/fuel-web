@@ -122,11 +122,7 @@ class DockerUpgrader(object):
                     volume_container = self.container_by_id(container_id)
                     volumes_from.append(volume_container['container_name'])
 
-            links = []
-            if container.get('links'):
-                for container_link in container.get('links'):
-                    link_container = self.container_by_id(container_link['id'])
-                    links.append((link_container['container_name'], container_link['alias']))
+            links = self.get_container_links(container)
 
             created_container = self.create_container(
                 container['image_name'],
@@ -140,6 +136,15 @@ class DockerUpgrader(object):
                 port_bindings=container.get('port_bindings'),
                 links=links,
                 binds=container.get('binds'))
+
+    def get_container_links(self, container):
+        links = []
+        if container.get('links'):
+            for container_link in container.get('links'):
+                link_container = self.container_by_id(container_link['id'])
+                links.append((link_container['container_name'], container_link['alias']))
+
+        return links
 
     @classmethod
     def build_dependencies_graph(cls, containers):
@@ -260,26 +265,39 @@ class DockerUpgrader(object):
         for container in containers_to_stop:
             logger.debug(u'Stop container: {0}'.format(container))
 
-            try:
-                self.docker_client.stop(
-                    container['Id'], config.docker['stop_container_timeout'])
-            except requests.exceptions.Timeout:
-                # NOTE(eli): docker use SIGTERM signal
-                # to stop container if timeout expired
-                # docker use SIGKILL to stop container.
-                # Here we just want to make sure that
-                # container was stopped.
-                logger.warn(
-                    u'Couldn\'t stop ctonainer, try '
-                    'to stop it again: {0}'.format(container))
-                self.docker_client.stop(
-                    container['Id'], config.docker['stop_container_timeout'])
+            self.stop_container(container['Id'])
+
+    def stop_container(self, container_id):
+        """Stop docker container
+
+        :param container_id: container id
+        """
+        logger.debug(u'Stop container: {0}'.format(container_id))
+
+        try:
+            self.docker_client.stop(
+                container_id, config.docker['stop_container_timeout'])
+        except requests.exceptions.Timeout:
+            # NOTE(eli): docker use SIGTERM signal
+            # to stop container if timeout expired
+            # docker use SIGKILL to stop container.
+            # Here we just want to make sure that
+            # container was stopped.
+            logger.warn(
+                u'Couldn\'t stop ctonainer, try '
+                'to stop it again: {0}'.format(container_id))
+            self.docker_client.stop(
+                container_id, config.docker['stop_container_timeout'])
 
     def run_post_build_actions(self):
         """Run db migration for installed services
+
+        TODO(eli): We have here a lot of
+        hardcoded logic all this logic must
+        be described in configuration file
         """
-        logger.info(u'Run volume_db container')
         volume_container = self.container_by_id('volume_db')
+        logger.info(u'Run volume_db container %s', volume_container)
         binded_volumes = dict([(v, v) for v in volume_container['volumes']])
         self.run(
             volume_container['image_name'],
@@ -289,22 +307,35 @@ class DockerUpgrader(object):
             binds=binded_volumes,
             detach=True)
 
-        logger.info(u'Run postgresql container')
         pg_container = self.container_by_id('postgresql')
+        logger.info(u'Run postgresql container %s', pg_container)
         self.run(
             pg_container['image_name'],
+            name=pg_container['container_name'],
             volumes_from=volume_container['container_name'],
             ports=pg_container['ports'],
             port_bindings=pg_container['port_bindings'],
             detach=True)
 
-        logger.info(u'Run db migration for nailgun')
         nailgun_container = self.container_by_id('nailgun')
+        logger.info(u'Run db migration for nailgun %s', nailgun_container)
         self.run(
             nailgun_container['image_name'],
             command=nailgun_container['post_build_command'],
+            # TODO(eli): remove hardcoded links
+            links=filter(lambda c: c[1] == 'db', self.get_container_links(nailgun_container)),
             retry_interval=2,
             retries_count=3)
+
+        ostf_container = self.container_by_id('ostf')
+        logger.info(u'Run db migration for ostf %s', ostf_container)
+        self.run(
+            ostf_container['image_name'],
+            # TODO(eli): remove hardcoded links
+            command=ostf_container['post_build_command'],
+            links=filter(lambda c: c[1] == 'db', self.get_container_links(ostf_container)),
+            retry_interval=3,
+            retries_count=6)
 
     def run(self, image_name, **kwargs):
         """Run container from image, accepts the
@@ -373,8 +404,9 @@ class DockerUpgrader(object):
         """
         # We have to delete container because we cannot
         # have several containers with the same name
-        if params.get('name') is not None:
-            self._delete_container_if_exist(params.get('name'))
+        container_name = params.get('name')
+        if container_name is not None:
+            self._delete_container_if_exist(container_name)
 
         logger.debug(u'Create container from image {0}: {1}'.format(
             image_name, params))
@@ -428,9 +460,15 @@ class DockerUpgrader(object):
 
         :param container_id: id of container
         """
-        return filter(
+        filtered_containers = filter(
             lambda c: c['id'] == container_id,
-            self.new_release_containers)[0]
+            self.new_release_containers)
+
+        if not filtered_containers:
+            raise errors.CannotFindContainerError(
+                'Cannot find container with id {0}'.format(container_id))
+
+        return filtered_containers[0]
 
     def remove_new_release_images(self):
         """We need to remove images for current release
@@ -443,19 +481,20 @@ class DockerUpgrader(object):
             self._delete_containers_for_image(image)
             if self.docker_client.images(name=image):
                 logger.info(u'Remove image for new version {0}'.format(
-                    container))
+                    image))
                 self.docker_client.remove_image(image)
 
-    def _delete_container_if_exist(self, container_id):
+    def _delete_container_if_exist(self, container_name):
         """Deletes docker container if it exists
 
-        :param container_id: id of container
+        :param container_name: name of container
         """
         found_containers = filter(
-            lambda c: u'/{0}'.format(container_id) in c['Names'],
+            lambda c: u'/{0}'.format(container_name) in c['Names'],
             self.docker_client.containers(all=True))
 
         for container in found_containers:
+            self.stop_container(container['Id'])
             logger.debug(u'Delete container {0}'.format(container))
             self.docker_client.remove_container(container['Id'])
 
@@ -467,7 +506,7 @@ class DockerUpgrader(object):
         all_containers = self.docker_client.containers(all=True)
 
         containers = filter(
-            # NOTE(eli) :We must use convertation to
+            # NOTE(eli): We must use convertation to
             # str because in some cases Image is integer
             lambda c: str(c.get('Image')).startswith(image),
             all_containers)
