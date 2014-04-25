@@ -146,5 +146,7 @@ def wait_for_true(check, timeout=60):
         if result:
             return result
         if time.time() - start_time > timeout:
-            raise TimeoutError(error_message)
+            raise TimeoutError(
+                'Failed to execute '
+                'command with timeout {0}'.format(timeout))
         time.sleep(0.1)

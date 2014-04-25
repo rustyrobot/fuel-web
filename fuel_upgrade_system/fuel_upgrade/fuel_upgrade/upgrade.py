@@ -24,6 +24,7 @@ from copy import deepcopy
 
 import requests
 
+import docker
 from docker import Client
 
 from fuel_upgrade.config import config
@@ -116,26 +117,42 @@ class DockerUpgrader(object):
             container = self.container_by_id(container_id)
             logger.debug(u'Started  {0}'.format(container))
 
-            volumes_from = []
-            if container.get('volumes_from'):
-                for container_id in container.get('volumes_from'):
-                    volume_container = self.container_by_id(container_id)
-                    volumes_from.append(volume_container['container_name'])
-
             links = self.get_container_links(container)
 
             created_container = self.create_container(
                 container['image_name'],
                 name=container.get('container_name'),
                 volumes=container.get('volumes'),
-                volumes_from=','.join(volumes_from),
                 detach=False)
+
+            volumes_from = []
+            if container.get('volumes_from'):
+                for container_id in container.get('volumes_from'):
+                    volume_container = self.container_by_id(container_id)
+                    volumes_from.append(volume_container['container_name'])
 
             self.start_container(
                 created_container,
-                port_bindings=container.get('port_bindings'),
+                port_bindings=tuple(container.get('port_bindings')),
                 links=links,
+                volumes_from=volumes_from,
                 binds=container.get('binds'))
+
+    def exec_with_retries(
+            self, func, exceptions, message, retries=1, interval=0):
+        # TODO(eli): refactor it and make retries
+        # as a decorator
+
+        intervals = retries * [interval]
+
+        for interval in intervals:
+            try:
+                return func()
+            except exceptions as exc:
+                if str(exc).endswith(message):
+                    time.sleep(interval)
+                    continue
+                raise
 
     def get_container_links(self, container):
         links = []
@@ -298,13 +315,12 @@ class DockerUpgrader(object):
         """
         volume_container = self.container_by_id('volume_db')
         logger.info(u'Run volume_db container %s', volume_container)
-        binded_volumes = dict([(v, v) for v in volume_container['volumes']])
         self.run(
             volume_container['image_name'],
             name=volume_container['container_name'],
             volumes=volume_container['volumes'],
             command=volume_container['post_build_command'],
-            binds=binded_volumes,
+            binds=volume_container['binds'],
             detach=True)
 
         pg_container = self.container_by_id('postgresql')
@@ -325,14 +341,14 @@ class DockerUpgrader(object):
             # TODO(eli): remove hardcoded links
             links=filter(lambda c: c[1] == 'db', self.get_container_links(nailgun_container)),
             retry_interval=2,
-            retries_count=3)
+            retries_count=8)
 
         ostf_container = self.container_by_id('ostf')
         logger.info(u'Run db migration for ostf %s', ostf_container)
         self.run(
             ostf_container['image_name'],
-            # TODO(eli): remove hardcoded links
             command=ostf_container['post_build_command'],
+            # TODO(eli): remove hardcoded links
             links=filter(lambda c: c[1] == 'db', self.get_container_links(ostf_container)),
             retry_interval=3,
             retries_count=6)
@@ -350,7 +366,8 @@ class DockerUpgrader(object):
         params = deepcopy(kwargs)
         start_command_keys = [
             'lxc_conf', 'port_bindings', 'binds',
-            'publish_all_ports', 'links', 'privileged']
+            'publish_all_ports', 'links', 'privileged',
+            'dns', 'volumes_from']
 
         start_params = {}
         for start_command_key in start_command_keys:
@@ -411,7 +428,15 @@ class DockerUpgrader(object):
         logger.debug(u'Create container from image {0}: {1}'.format(
             image_name, params))
 
-        return self.docker_client.create_container(image_name, **params)
+        def func_create():
+            return self.docker_client.create_container(image_name, **params)
+
+        return self.exec_with_retries(
+            func_create,
+            docker.errors.APIError,
+            "Can't set cookie",
+            retries=3,
+            interval=2)
 
     @property
     def new_release_containers(self):
@@ -496,7 +521,18 @@ class DockerUpgrader(object):
         for container in found_containers:
             self.stop_container(container['Id'])
             logger.debug(u'Delete container {0}'.format(container))
-            self.docker_client.remove_container(container['Id'])
+
+            # TODO(eli): refactor it and make retries
+            # as a decorator
+            def func_remove():
+                self.docker_client.remove_container(container['Id'])
+
+            self.exec_with_retries(
+                func_remove,
+                docker.errors.APIError,
+                'Error running removeDevice',
+                retries=3,
+                interval=2)
 
     def _delete_containers_for_image(self, image):
         """Deletes docker containers for specified image
@@ -527,6 +563,7 @@ class DockerInitializer(DockerUpgrader):
 
     def upgrade(self):
         # self.upload_images()
+        self.stop_fuel_containers()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()

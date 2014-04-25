@@ -1,4 +1,4 @@
-version: '5.0'
+version: '5.1'
 working_directory: /var/lib/fuel_upgrade/
 log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
@@ -53,9 +53,23 @@ containers:
         alias: db
       - id: rabbitmq
         alias: rabbitmq
+    volumes:
+      - /usr/share/nailgun/static
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_ssh_keys
+      - volume_fuel_configs
+
 
   - id: astute
     from_image: astute
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_ssh_keys
+      - volume_fuel_configs
+
 
   - id: cobbler
     from_image: cobbler
@@ -75,14 +89,27 @@ containers:
         - 443
     ports:
       - 53
-      - 69
+      - 67
+      - [69, 'udp']
       - 80
       - 443
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_ssh_keys
+      - volume_fuel_configs
+
 
   - id: mcollective
     from_image: mcollective
     privileged: true
-    # TODO Add dir to logs
+    volumes_from:
+      - volume_logs
+      # Required for /var/www/nailgun/dump directory
+      - volume_repos
+      - volume_ssh_keys
+      - volume_fuel_configs
+
 
   - id: rsync
     from_image: rsync
@@ -92,7 +119,11 @@ containers:
         - 873
     ports:
       - 873
-    # TODO Add dir
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: rsyslog
     from_image: rsyslog
@@ -106,7 +137,11 @@ containers:
     ports:
       - [514, 'udp']
       - 514
-    # TODO Add dir
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: nginx
     from_image: nginx
@@ -120,7 +155,6 @@ containers:
     ports:
       - 8000
       - 8080
-
     links:
       - id: nailgun
         alias: nailgun
@@ -128,6 +162,12 @@ containers:
         alias: ostf
     volumes_from:
       - volume_repos
+      # Required for static files
+      - nailgun
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: rabbitmq
     from_image: rabbitmq
@@ -149,12 +189,15 @@ containers:
       - 4369
       - 15672
       - 61613
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: ostf
     from_image: ostf
-    # FIXME(eli): Remove hardcoded endpoints 10.20.0.2:5432
-    # right we have a problem
-    post_build_command: 'ostf-server --host=127.0.0.1 --port=8777 --log_file=/var/log/ostf.log --dbpath postgresql+psycopg2://ostf:ostf@10.20.0.2:5432/ostf --after-initialization-environment-hook'
+    post_build_command: 'ostf-server --after-initialization-environment-hook'
     port_bindings:
       8777:
         - '0.0.0.0'
@@ -166,6 +209,11 @@ containers:
         alias: db
       - id: rabbitmq
         alias: rabbitmq
+    volumes_from:
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: postgresql
     from_image: postgres
@@ -177,6 +225,10 @@ containers:
       - 5432
     volumes_from:
       - volume_db
+      - volume_logs
+      - volume_repos
+      - volume_fuel_configs
+
 
   - id: volume_db
     from_image: busybox
@@ -184,7 +236,10 @@ containers:
     volumes:
       - /var/lib/pgsql
     binds:
-      '/var/lib/pgsql': '/var/lib/pgsql'
+      '/var/lib/pgsql':
+        bind: '/var/lib/pgsql'
+        ro: False
+
 
   - id: volume_repos
     from_image: busybox
@@ -192,4 +247,50 @@ containers:
     volumes:
       - /var/www/nailgun
     binds:
-      '/var/www/nailgun': '/var/www/nailgun'
+      '/var/www/nailgun':
+        bind: '/var/www/nailgun'
+        ro: False
+
+
+  - id: volume_logs
+    from_image: busybox
+    post_build_command: 'true'
+    volumes:
+      - /var/log
+    binds:
+      '/var/log':
+        bind: '/var/log'
+        ro: False
+
+
+  - id: volume_ssh_keys
+    from_image: busybox
+    post_build_command: 'true'
+    volumes:
+      - /root/.ssh
+    binds:
+      '/root/.ssh':
+        bind: '/root/.ssh'
+        ro: False
+
+
+  - id: volume_dump
+    from_image: busybox
+    post_build_command: 'true'
+    volumes:
+      - /dump
+    binds:
+      '/dump':
+        bind: '/var/www/nailgun/dump'
+        ro: False
+
+
+  - id: volume_fuel_configs
+    from_image: busybox
+    post_build_command: 'true'
+    volumes:
+      - /etc/fuel
+    binds:
+      '/etc/fuel':
+        bind: '/etc/fuel'
+        ro: True
