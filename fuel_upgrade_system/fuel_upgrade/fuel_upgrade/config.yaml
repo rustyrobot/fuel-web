@@ -293,4 +293,4 @@ containers:
     binds:
       '/etc/fuel':
         bind: '/etc/fuel'
-        ro: True
+        ro: False

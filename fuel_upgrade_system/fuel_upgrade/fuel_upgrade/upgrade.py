@@ -133,7 +133,7 @@ class DockerUpgrader(object):
 
             self.start_container(
                 created_container,
-                port_bindings=tuple(container.get('port_bindings')),
+                port_bindings=container.get('port_bindings'),
                 links=links,
                 volumes_from=volumes_from,
                 binds=container.get('binds'))
@@ -195,6 +195,11 @@ class DockerUpgrader(object):
             configs.append(params)
 
         self.supervisor.generate_configs(configs)
+
+        cobbler_container = self.container_by_id('cobbler')
+        self.supervisor.generate_cobbler_config(
+            {'service_name': cobbler_container['id'],
+             'container_name': cobbler_container['container_name']})
 
     def switch_to_new_configs(self):
         """Switches supervisor to new configs

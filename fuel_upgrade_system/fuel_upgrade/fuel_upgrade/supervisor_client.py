@@ -18,6 +18,7 @@ import os
 import logging
 import xmlrpclib
 import supervisor.xmlrpc
+import stat
 
 from xmlrpclib import Fault
 
@@ -153,3 +154,25 @@ class SupervisorClient(object):
             config_path,
             {'services_names': ','.join(services_names),
              'group_name': config.supervisor['group_name']})
+
+    def generate_cobbler_config(self, container):
+        """Generates 
+
+        :param container: dict `service_name` `container_name`
+        """
+        container_name = container['container_name']
+        script_path = os.path.join('/usr/bin', container_name)
+        script_template_path = os.path.join(
+            TEMPLATES_DIR, 'cobbler_runner')
+
+        utils.render_template_to_file(
+            script_template_path,
+            script_path,
+            {'container_name': container_name})
+
+        self.generate_config({
+            'service_name': container['service_name'],
+            'command': container_name})
+
+        st = os.stat(script_path)
+        os.chmod(script_path, st.st_mode | stat.S_IEXEC)
