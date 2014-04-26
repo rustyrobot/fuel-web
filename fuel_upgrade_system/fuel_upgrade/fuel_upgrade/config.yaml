@@ -17,7 +17,6 @@ supervisor:
   configs_prefix: /etc/supervisord.d/
   current_configs_prefix: /etc/supervisord.d/current
   endpoint: 'unix:///var/run/supervisor.sock'
-  group_name: all
   restart_timeout: 150
 
 endpoints:

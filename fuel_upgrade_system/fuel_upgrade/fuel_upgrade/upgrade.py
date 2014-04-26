@@ -60,12 +60,20 @@ class DockerUpgrader(object):
 
         self.supervisor = SupervisorClient()
 
+    def backup(self):
+        """We don't need to backup containers
+        because we don't remove current version.
+        As result here we run backup of database.
+        """
+        pass
+        # self.backup_db()
+
     def upgrade(self):
         """Method with upgarde logic
         """
         self.supervisor.stop_all_services()
         self.stop_fuel_containers()
-        self.upload_images()
+        # self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()
@@ -94,14 +102,6 @@ class DockerUpgrader(object):
             # image importing which equal to
             # `docker load`
             utils.exec_cmd(u'docker load < "{0}"'.format(docker_image))
-
-    def backup(self):
-        """We don't need to backup containers
-        because we don't remove current version.
-        As result here we run backup of database.
-        """
-        pass
-        # self.backup_db()
 
     def create_containers(self):
         """Create containers in the right order
@@ -133,10 +133,24 @@ class DockerUpgrader(object):
 
             self.start_container(
                 created_container,
-                port_bindings=container.get('port_bindings'),
+                port_bindings=self.get_port_bindings(container),
                 links=links,
                 volumes_from=volumes_from,
                 binds=container.get('binds'))
+
+    def get_port_bindings(self, container):
+        """Docker binding accepts port_bindings
+        as tuple, here we convert from list to tuple.
+
+        FIXME(eli): https://github.com/dotcloud/docker-py/blob/
+                    030516eb290ddbd33429e0a111a07b43480ea6e5/
+                    docker/utils/utils.py#L87
+        """
+        port_bindings = container.get('port_bindings')
+        if port_bindings is None:
+            return
+
+        return dict([(k, tuple(v)) for k, v in port_bindings.iteritems()])
 
     def exec_with_retries(
             self, func, exceptions, message, retries=1, interval=0):
@@ -268,7 +282,7 @@ class DockerUpgrader(object):
             return
 
         try:
-            exec_cmd(u"su postgres -c 'pg_dumpall' > '{0}'".format(pg_dump_path))
+            exec_cmd(u"su postgres -c 'pg_dumpall --clean' > '{0}'".format(pg_dump_path))
         except errors.ExecutedErrorNonZeroExitCode:
             if os.path.exists(pg_dump_path):
                 logger.info(u'Remove postgresql dump file because '
@@ -335,16 +349,14 @@ class DockerUpgrader(object):
             name=pg_container['container_name'],
             volumes_from=volume_container['container_name'],
             ports=pg_container['ports'],
-            port_bindings=pg_container['port_bindings'],
-            detach=True)
+            port_bindings=self.get_port_bindings(pg_container),
+            detach=False)
 
         nailgun_container = self.container_by_id('nailgun')
         logger.info(u'Run db migration for nailgun %s', nailgun_container)
         self.run(
             nailgun_container['image_name'],
             command=nailgun_container['post_build_command'],
-            # TODO(eli): remove hardcoded links
-            links=filter(lambda c: c[1] == 'db', self.get_container_links(nailgun_container)),
             retry_interval=2,
             retries_count=8)
 
@@ -353,8 +365,6 @@ class DockerUpgrader(object):
         self.run(
             ostf_container['image_name'],
             command=ostf_container['post_build_command'],
-            # TODO(eli): remove hardcoded links
-            links=filter(lambda c: c[1] == 'db', self.get_container_links(ostf_container)),
             retry_interval=3,
             retries_count=6)
 
@@ -567,8 +577,7 @@ class DockerInitializer(DockerUpgrader):
     """
 
     def upgrade(self):
-        # self.upload_images()
-        self.stop_fuel_containers()
+        self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()

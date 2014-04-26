@@ -72,17 +72,10 @@ class SupervisorClient(object):
                 self.supervisor_config_dir,
                 current_cfg_path)
 
-    def stop_fuel_services(self):
-        """Stops group of processes
-        """
-        group_name = config.supervisor['group_name']
-        logger.info(u'Stop processes for "{0}" group'.format(group_name))
-        self.supervisor.stopProcessGroup(group_name)
-
     def stop_all_services(self):
         """Stops all processes
         """
-        logger.info(u'Stop all processes')
+        logger.info(u'Stop all services')
         self.supervisor.stopAllProcesses()
 
     def restart_and_wait(self):
@@ -118,42 +111,6 @@ class SupervisorClient(object):
             self.generate_config(service)
 
         names = [service['service_name'] for service in services]
-        self.generate_common_config(names)
-
-    def generate_config(self, service):
-        """Generates config for each service
-
-        :param service: dict where `service_name`
-                        and `command` are required fields
-        """
-        config_path = os.path.join(
-            self.supervisor_config_dir,
-            '{0}'.format(service['service_name']) + '.conf')
-            
-        log_path = '/var/log/{0}/app.log'.format(service['service_name'])
-        utils.create_dir_if_not_exists(os.path.dirname(log_path))
-
-        params = {
-            'service_name': service['service_name'],
-            'command': service['command'],
-            'log_path': log_path}
-
-        utils.render_template_to_file(
-            self.supervisor_template_path, config_path, params)
-
-    def generate_common_config(self, services_names):
-        """Generates common.conf, which has common
-        configuration parameters for all services
-
-        :param services_names: dict {'services_names': 'service1,service2'}
-        """
-        config_path = os.path.join(self.supervisor_config_dir, 'common.conf')
-
-        utils.render_template_to_file(
-            self.supervisor_common_template_path,
-            config_path,
-            {'services_names': ','.join(services_names),
-             'group_name': config.supervisor['group_name']})
 
     def generate_cobbler_config(self, container):
         """Generates 
