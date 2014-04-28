@@ -123,6 +123,7 @@ class DockerUpgrader(object):
                 container['image_name'],
                 name=container.get('container_name'),
                 volumes=container.get('volumes'),
+                ports=container.get('ports'),
                 detach=False)
 
             volumes_from = []
@@ -136,7 +137,8 @@ class DockerUpgrader(object):
                 port_bindings=self.get_port_bindings(container),
                 links=links,
                 volumes_from=volumes_from,
-                binds=container.get('binds'))
+                binds=container.get('binds'),
+                privileged=container.get('privileged', False))
 
     def get_port_bindings(self, container):
         """Docker binding accepts port_bindings
@@ -151,6 +153,20 @@ class DockerUpgrader(object):
             return
 
         return dict([(k, tuple(v)) for k, v in port_bindings.iteritems()])
+
+    def get_ports(self, container):
+        """Docker binding accepts ports as tuple, here we convert from list to tuple.
+
+        FIXME(eli): https://github.com/dotcloud/docker-py/blob/
+                    73434476b32136b136e1cdb0913fd123126f2a52/
+                    docker/client.py#L111-L114
+        """
+        ports = container.get('ports')
+        if ports is None:
+            return
+
+        return [port if not isinstance(port, list) else tuple(port)
+                for port in ports]
 
     def exec_with_retries(
             self, func, exceptions, message, retries=1, interval=0):
@@ -332,6 +348,18 @@ class DockerUpgrader(object):
         hardcoded logic all this logic must
         be described in configuration file
         """
+
+        # FIXME(eli): Here is dirty hack which copies
+        # data from hardcoded container and copies
+        # db data to special directory
+        previous_db_container = self._get_containers_by_name('fuel-core-5.0-postgres')[0]
+        cmd = 'docker cp {0}:{1} {2}'.format(
+            previous_db_container['Id'],
+            '/var/lib/pgsql',
+            '/var/lib/')
+        logger.debug(cmd)
+        exec_cmd(cmd)
+        
         volume_container = self.container_by_id('volume_db')
         logger.info(u'Run volume_db container %s', volume_container)
         self.run(
@@ -350,7 +378,7 @@ class DockerUpgrader(object):
             volumes_from=volume_container['container_name'],
             ports=pg_container['ports'],
             port_bindings=self.get_port_bindings(pg_container),
-            detach=False)
+            detach=True)
 
         nailgun_container = self.container_by_id('nailgun')
         logger.info(u'Run db migration for nailgun %s', nailgun_container)
@@ -440,11 +468,14 @@ class DockerUpgrader(object):
         if container_name is not None:
             self._delete_container_if_exist(container_name)
 
+        new_params = deepcopy(params)
+        new_params['ports'] = self.get_ports(new_params)
+
         logger.debug(u'Create container from image {0}: {1}'.format(
-            image_name, params))
+            image_name, new_params))
 
         def func_create():
-            return self.docker_client.create_container(image_name, **params)
+            return self.docker_client.create_container(image_name, **new_params)
 
         return self.exec_with_retries(
             func_create,
@@ -529,9 +560,7 @@ class DockerUpgrader(object):
 
         :param container_name: name of container
         """
-        found_containers = filter(
-            lambda c: u'/{0}'.format(container_name) in c['Names'],
-            self.docker_client.containers(all=True))
+        found_containers = self._get_containers_by_name(container_name)
 
         for container in found_containers:
             self.stop_container(container['Id'])
@@ -548,6 +577,11 @@ class DockerUpgrader(object):
                 'Error running removeDevice',
                 retries=3,
                 interval=2)
+
+    def _get_containers_by_name(self, container_name):
+        return filter(
+            lambda c: u'/{0}'.format(container_name) in c['Names'],
+            self.docker_client.containers(all=True))
 
     def _delete_containers_for_image(self, image):
         """Deletes docker containers for specified image

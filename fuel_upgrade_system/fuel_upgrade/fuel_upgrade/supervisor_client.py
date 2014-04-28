@@ -82,7 +82,7 @@ class SupervisorClient(object):
         """Restart supervisor and wait untill it will be available
         """
         logger.info(u'Restart supervisor')
-        self.stop_fuel_services()
+        self.stop_all_services()
         self.supervisor.restart()
 
         def get_all_processes():
@@ -111,6 +111,27 @@ class SupervisorClient(object):
             self.generate_config(service)
 
         names = [service['service_name'] for service in services]
+
+    def generate_config(self, service):
+        """Generates config for each service
+
+        :param service: dict where `service_name`
+                        and `command` are required fields
+        """
+        config_path = os.path.join(
+            self.supervisor_config_dir,
+            '{0}'.format(service['service_name']) + '.conf')
+
+        log_path = '/var/log/{0}/app.log'.format(service['service_name'])
+        utils.create_dir_if_not_exists(os.path.dirname(log_path))
+
+        params = {
+            'service_name': service['service_name'],
+            'command': service['command'],
+            'log_path': log_path}
+
+        utils.render_template_to_file(
+            self.supervisor_template_path, config_path, params)
 
     def generate_cobbler_config(self, container):
         """Generates 

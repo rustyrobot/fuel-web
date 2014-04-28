@@ -8,8 +8,10 @@ if [ -z "$CONTAINER_NAME" ]; then
     exit 1
 fi
 
+docker start $CONTAINER_NAME
+
 function is_exist {
-  docker ps -a | grep -q $CONTAINER_NAME
+  docker ps | grep -q $CONTAINER_NAME
   return $?
 }
 
@@ -20,6 +22,11 @@ fi
 
 cobbler_ip=$(docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_NAME)
 admin_interface=$(grep interface: $ASTUTE_YAML | cut -d':' -f2 | tr -d ' ')
+
+if [ -z "$cobbler_ip" ]; then
+    echo "ERROR: could not retrieve ip address of cobbler onctainer"
+    exit 1
+fi
 
 cat > /etc/sysconfig/dhcrelay << EOF
 # Command line options here
