@@ -217,6 +217,7 @@ containers:
       - volume_logs
       - volume_repos
       - volume_fuel_configs
+      - volume_ssh_keys
 
 
   - id: postgresql
