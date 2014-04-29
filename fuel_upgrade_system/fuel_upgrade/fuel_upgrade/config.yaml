@@ -40,7 +40,12 @@ images:
 containers:
   - id: nailgun
     from_image: nailgun
-    post_build_command: "manage.py migrate upgrade head"
+    # The reason why do we use dropdb db to remove all database
+    # is we had a bug where we created database without alembic
+    # as result we cannot run it now, remove this code
+    # when https://github.com/stackforge/fuel-web/commit/4f6208c617f4931314812091de1b64dfd18f9073
+    # will be on the iso, use 'manage.py migrate upgrade head' instead
+    post_build_command: "manage.py dropdb; manage.py syncdb"
     port_bindings:
       8001:
         - '0.0.0.0'
