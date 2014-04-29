@@ -2,9 +2,9 @@
 
 set -x
 
-ROOT_DIR=/web
+FUEL_ROOT_DIR=/web
 
-FUEL_UPGRADE_DIR=$ROOT_DIR/fuel-web-4bp-fuel-upgarde/fuel_upgrade_system/fuel_upgrade
+FUEL_UPGRADE_DIR=$FUEL_ROOT_DIR/fuel-web-4bp-fuel-upgarde/fuel_upgrade_system/fuel_upgrade
 UPGRADE_SYSTEM_URL=https://github.com/rustyrobot/fuel-web/archive/4bp/fuel-upgarde.tar.gz
 
 IMAGES_PATH=/var/images
@@ -22,14 +22,16 @@ lrzuntar $IMAGES_ARCHIVE_NAME || exit 1
 
 echo 'Install upgrade script dependenices'
 
-mkdir -p $ROOT_DIR
-pushd $ROOT_DIR
+rm -rf $FUEL_ROOT_DIR
+mkdir -p $FUEL_ROOT_DIR
+pushd $FUEL_ROOT_DIR
 curl -L $UPGRADE_SYSTEM_URL | tar zx
 
 easy_install pip
 yum install git
 pip install git+https://github.com/rustyrobot/docker-py.git@fixed-volumes#egg=docker-py
-python $FUEL_UPGRADE_DIR/setup.py develop
+pushd $FUEL_UPGRADE_DIR
+python setup.py develop
 
 
 echo 'Run upgrade system'

@@ -73,7 +73,7 @@ class DockerUpgrader(object):
         """
         self.supervisor.stop_all_services()
         self.stop_fuel_containers()
-        # self.upload_images()
+        self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()

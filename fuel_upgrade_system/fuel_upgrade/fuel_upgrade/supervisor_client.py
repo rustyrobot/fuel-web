@@ -82,7 +82,7 @@ class SupervisorClient(object):
         """Restart supervisor and wait untill it will be available
         """
         logger.info(u'Restart supervisor')
-        self.stop_all_services()
+        # self.stop_all_services()
         self.supervisor.restart()
 
         def get_all_processes():
@@ -122,7 +122,7 @@ class SupervisorClient(object):
             self.supervisor_config_dir,
             '{0}'.format(service['service_name']) + '.conf')
 
-        log_path = '/var/log/{0}/app.log'.format(service['service_name'])
+        log_path = '/var/log/docker-{0}.log'.format(service['service_name'])
         utils.create_dir_if_not_exists(os.path.dirname(log_path))
 
         params = {
