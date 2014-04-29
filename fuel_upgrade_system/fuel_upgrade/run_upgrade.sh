@@ -28,7 +28,7 @@ pushd $FUEL_ROOT_DIR
 curl -L $UPGRADE_SYSTEM_URL | tar zx
 
 easy_install pip
-yum install git
+yum install -y git
 pip install git+https://github.com/rustyrobot/docker-py.git@fixed-volumes#egg=docker-py
 pushd $FUEL_UPGRADE_DIR
 python setup.py develop
