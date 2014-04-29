@@ -71,9 +71,10 @@ class DockerUpgrader(object):
     def upgrade(self):
         """Method with upgarde logic
         """
+        self.pre_upgrade_actions()
         self.supervisor.stop_all_services()
         self.stop_fuel_containers()
-        # self.upload_images()
+        self.upload_images()
         self.run_post_build_actions()
         self.stop_fuel_containers()
         self.create_containers()
@@ -83,6 +84,14 @@ class DockerUpgrader(object):
 
         # Reload configs and run new services
         self.supervisor.restart_and_wait()
+
+    def pre_upgrade_actions(self):
+        """FIXME(eli): for some reasons
+        current container fails without this
+        directories
+        """
+        exec_cmd('mkdir -p /var/log/nailgun')
+        exec_cmd('mkdir -p /var/log/httpd')
 
     def upload_images(self):
         """Uploads images to docker

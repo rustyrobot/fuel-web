@@ -82,13 +82,12 @@ class SupervisorClient(object):
         """Restart supervisor and wait untill it will be available
         """
         logger.info(u'Restart supervisor')
-        # self.stop_all_services()
         self.supervisor.restart()
 
         def get_all_processes():
             try:
                 return self.supervisor.getAllProcessInfo()
-            except IOError, Fault:
+            except (IOError, Fault):
                 return False
 
         all_processes = utils.wait_for_true(
