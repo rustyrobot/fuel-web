@@ -7,7 +7,7 @@ ROOT_DIR=/web
 FUEL_UPGRADE_DIR=$ROOT_DIR/fuel-web-4bp-fuel-upgarde/fuel_upgrade_system/fuel_upgrade
 UPGRADE_SYSTEM_URL=https://github.com/rustyrobot/fuel-web/archive/4bp/fuel-upgarde.tar.gz
 
-IMAGES_PATH=/images
+IMAGES_PATH=/var/images
 IMAGES_ARCHIVE_NAME=fuel-images.tar.lrz
 IMAGES_URL=http://srv11-msk.msk.mirantis.net/eli-docker/fuel-images.tar.lrz
 
