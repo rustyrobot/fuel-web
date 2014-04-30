@@ -69,6 +69,9 @@ class Role(Base):
 
 class Node(Base):
     __tablename__ = 'nodes'
+    # FOR UPGRADES TESTING
+    uuuuuupgrade_field = Column(String(36), default='NEW NAILGUUUUN')
+
     id = Column(Integer, primary_key=True)
     uuid = Column(String(36), nullable=False,
                   default=lambda: str(uuid.uuid4()), unique=True)
