@@ -8,9 +8,9 @@ Run command on the master node
 
 ## How to check
 
-`docker images` - command shows 5.1 images
-`ls -l /etc/supervisord.d/` - `current` symlink is linked on /etc/supervisord.d/5.1
-`docker ps` - shows 5.1 containers
+* `docker images` - command shows 5.1 images
+* `ls -l /etc/supervisord.d/` - `current` symlink is linked on /etc/supervisord.d/5.1
+* `docker ps` - shows 5.1 containers
 
 ## Notes
 
