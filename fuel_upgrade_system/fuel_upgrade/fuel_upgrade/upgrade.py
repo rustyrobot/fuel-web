@@ -96,8 +96,8 @@ class DockerUpgrader(object):
     def upload_images(self):
         """Uploads images to docker
         """
-        logger.info(u'Start image uploading')
-        self.remove_new_release_images()
+        # logger.info(u'Start image uploading')
+        # self.remove_new_release_images()
 
         for image in self.new_release_images:
             logger.debug(u'Try to upload docker image {0}'.format(image))

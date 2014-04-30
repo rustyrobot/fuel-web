@@ -9,7 +9,7 @@ UPGRADE_SYSTEM_URL=https://github.com/rustyrobot/fuel-web/archive/4bp/fuel-upgar
 
 IMAGES_PATH=/var/images
 IMAGES_ARCHIVE_NAME=fuel-images.tar.lrz
-IMAGES_URL=http://srv11-msk.msk.mirantis.net/eli-docker/fuel-images.tar.lrz
+IMAGES_URL=http://srv11-msk.msk.mirantis.net/eli-docker/fuel-images-fixed-upgrades-nailgun-with-new-field.tar.lrz
 
 
 echo 'Download containers'
