@@ -71,7 +71,6 @@ class DockerUpgrader(object):
     def upgrade(self):
         """Method with upgarde logic
         """
-        self.pre_upgrade_actions()
         self.supervisor.stop_all_services()
         self.stop_fuel_containers()
         self.upload_images()
@@ -85,19 +84,10 @@ class DockerUpgrader(object):
         # Reload configs and run new services
         self.supervisor.restart_and_wait()
 
-    def pre_upgrade_actions(self):
-        """FIXME(eli): for some reasons
-        current container fails without this
-        directories
-        """
-        exec_cmd('mkdir -p /var/log/nailgun')
-        exec_cmd('mkdir -p /var/log/httpd')
-
     def upload_images(self):
         """Uploads images to docker
         """
-        # logger.info(u'Start image uploading')
-        # self.remove_new_release_images()
+        logger.info(u'Start image uploading')
 
         for image in self.new_release_images:
             logger.debug(u'Try to upload docker image {0}'.format(image))
@@ -504,8 +494,8 @@ class DockerUpgrader(object):
             new_container = deepcopy(container)
             new_container['image_name'] = self.make_image_name(
                 container['from_image'])
-            new_container['container_name'] = u'{0}{1}_{2}'.format(
-                config.container_prefix, container['id'], config.version)
+            new_container['container_name'] = u'{0}{1}-{2}'.format(
+                config.container_prefix, config.version, container['id'])
             new_containers.append(new_container)
 
         return new_containers

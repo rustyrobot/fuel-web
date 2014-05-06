@@ -11,7 +11,7 @@ docker:
   stop_container_timeout: 10
 
 image_prefix: fuel/
-container_prefix: fuel_
+container_prefix: fuel-core-
 
 supervisor:
   configs_prefix: /etc/supervisord.d/
@@ -37,7 +37,9 @@ images:
   - id: rsyslog
   - id: busybox
 
+
 containers:
+
   - id: nailgun
     from_image: nailgun
     post_build_command: "manage.py syncdb"
@@ -261,9 +263,9 @@ containers:
     from_image: busybox
     post_build_command: 'true'
     volumes:
-      - /var/log
+      - /var/log/docker-log
     binds:
-      '/var/log':
+      '/var/log/docker-log':
         bind: '/var/log'
         ro: False
 
