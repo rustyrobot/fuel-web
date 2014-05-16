@@ -369,6 +369,19 @@ class DockerUpgrader(object):
             binds=volume_container['binds'],
             detach=True)
 
+        volume_fuel_configs_container = self.container_by_id(
+            'volume_fuel_configs')
+        logger.info(u'Run volume_fuel_configs_container container %s',
+                    volume_fuel_configs_container)
+
+        self.run(
+            volume_fuel_configs_container['image_name'],
+            name=volume_fuel_configs_container['container_name'],
+            volumes=volume_fuel_configs_container['volumes'],
+            command=volume_fuel_configs_container['post_build_command'],
+            binds=volume_fuel_configs_container['binds'],
+            detach=True)
+
         pg_container = self.container_by_id('postgresql')
         logger.info(u'Run postgresql container %s', pg_container)
         self.run(
@@ -379,12 +392,28 @@ class DockerUpgrader(object):
             port_bindings=self.get_port_bindings(pg_container),
             detach=True)
 
+        volume_puppet_manifests_container = self.container_by_id(
+            'volume_puppet_manifests')
+        logger.info(u'Run volume_puppet_manifests_container container %s',
+                    volume_puppet_manifests_container)
+
+        self.run(
+            volume_puppet_manifests_container['image_name'],
+            name=volume_puppet_manifests_container['container_name'],
+            volumes=volume_puppet_manifests_container['volumes'],
+            command=volume_puppet_manifests_container['post_build_command'],
+            binds=volume_puppet_manifests_container['binds'],
+            detach=True)
+
         nailgun_container = self.container_by_id('nailgun')
         logger.info(u'Run db migration for nailgun %s', nailgun_container)
         self.run(
             nailgun_container['image_name'],
             command=nailgun_container['post_build_command'],
             retry_interval=2,
+            volumes_from=[
+                volume_fuel_configs_container['container_name'],
+                volume_puppet_manifests_container['container_name']],
             retries_count=8)
 
         ostf_container = self.container_by_id('ostf')
@@ -393,6 +422,9 @@ class DockerUpgrader(object):
             ostf_container['image_name'],
             command=ostf_container['post_build_command'],
             retry_interval=3,
+            volumes_from=[
+                volume_fuel_configs_container['container_name'],
+                volume_puppet_manifests_container['container_name']],
             retries_count=6)
 
     def run(self, image_name, **kwargs):
@@ -421,7 +453,7 @@ class DockerUpgrader(object):
 
         if not params.get('detach'):
             for interval in retries:
-                logs = self.docker_client.logs(container['Id'], stream=True)
+                logs = self.docker_client.logs(container['Id'], stream=True, stdout=True, stderr=True)
                 for log_line in logs:
                     logger.debug(log_line.rstrip())
 

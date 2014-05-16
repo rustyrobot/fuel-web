@@ -42,7 +42,7 @@ containers:
 
   - id: nailgun
     from_image: nailgun
-    post_build_command: "manage.py syncdb"
+    post_build_command: "puppet apply -v /etc/puppet/modules/nailgun/examples/nailgun-only.pp"
     port_bindings:
       8001:
         - '0.0.0.0'
@@ -203,7 +203,7 @@ containers:
 
   - id: ostf
     from_image: ostf
-    post_build_command: 'ostf-server --after-initialization-environment-hook'
+    post_build_command: 'puppet apply -v /etc/puppet/modules/nailgun/examples/ostf-only.pp'
     port_bindings:
       8777:
         - '0.0.0.0'
