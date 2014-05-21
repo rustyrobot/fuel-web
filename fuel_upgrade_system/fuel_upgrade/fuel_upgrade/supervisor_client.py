@@ -14,11 +14,15 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import httplib
 import os
 import logging
 import xmlrpclib
 import supervisor.xmlrpc
 import stat
+import socket
+
+import yaml
 
 from xmlrpclib import Fault
 
@@ -29,9 +33,6 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'templates'))
 
-import httplib
-import socket
-
 
 class SupervisorClient(object):
 
@@ -40,10 +41,13 @@ class SupervisorClient(object):
             TEMPLATES_DIR, 'supervisor.conf')
         self.supervisor_common_template_path = os.path.join(
             TEMPLATES_DIR, 'common.conf')
-        self.supervisor_config_dir = os.path.join(
-            config.supervisor['configs_prefix'], config.version)
+        self.supervisor_config_dir = self.make_config_path(config.version)
 
         utils.create_dir_if_not_exists(self.supervisor_config_dir)
+
+    def make_config_path(self, version):
+        return os.path.join(
+            config.supervisor['configs_prefix'], version)
 
     @property
     def supervisor(self):
@@ -68,9 +72,22 @@ class SupervisorClient(object):
             self.supervisor_config_dir, current_cfg_path))
         if os.path.exists(current_cfg_path):
             os.remove(current_cfg_path)
-            os.symlink(
-                self.supervisor_config_dir,
-                current_cfg_path)
+        os.symlink(self.supervisor_config_dir, current_cfg_path)
+
+    def switch_to_previous_configs(self):
+        """Switch to previous version of fuel
+        """
+        versions_config = open(config.fuel_config_path, 'r')
+        previous_version = yaml.load(versions_config)['VERSION']['release']
+        previous_config_path = self.make_config_path(previous_version)
+        current_cfg_path = config.supervisor['current_configs_prefix']
+
+        logger.debug(u'Create symlink from "{0}" to "{1}"'.format(
+            previous_config_path, current_cfg_path))
+
+        if os.path.exists(current_cfg_path):
+            os.remove(current_cfg_path)
+        os.symlink(previous_config_path, current_cfg_path)
 
     def stop_all_services(self):
         """Stops all processes

@@ -3,6 +3,7 @@ working_directory: /var/lib/fuel_upgrade/
 log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
 images_extension: tar
+fuel_config_path: /etc/fuel/version.yaml
 
 docker:
   url: unix://var/run/docker.sock

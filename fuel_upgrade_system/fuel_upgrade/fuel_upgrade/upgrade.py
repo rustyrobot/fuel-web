@@ -63,10 +63,10 @@ class DockerUpgrader(object):
     def backup(self):
         """We don't need to backup containers
         because we don't remove current version.
-        As result here we run backup of database.
+        Also we keep database in the container
+        and we don't need to backup dabase easier.
         """
         pass
-        # self.backup_db()
 
     def upgrade(self):
         """Method with upgarde logic
@@ -82,6 +82,12 @@ class DockerUpgrader(object):
         self.switch_to_new_configs()
 
         # Reload configs and run new services
+        self.supervisor.restart_and_wait()
+
+    def rollback(self):
+        self.supervisor.switch_to_previous_configs()
+        self.supervisor.stop_all_services()
+        self.stop_fuel_containers()
         self.supervisor.restart_and_wait()
 
     def upload_images(self):
@@ -285,25 +291,6 @@ class DockerUpgrader(object):
                 names.append(container['container_name'])
 
         return names
-
-    def backup_db(self):
-        """Backup postgresql database
-        """
-        logger.debug(u'Backup database')
-        pg_dump_path = os.path.join(self.working_directory, 'pg_dump_all.sql')
-        if os.path.exists(pg_dump_path):
-            logger.info(u'Database backup exists "{0}", '
-                        'do nothing'.format(pg_dump_path))
-            return
-
-        try:
-            exec_cmd(u"su postgres -c 'pg_dumpall --clean' > '{0}'".format(pg_dump_path))
-        except errors.ExecutedErrorNonZeroExitCode:
-            if os.path.exists(pg_dump_path):
-                logger.info(u'Remove postgresql dump file because '
-                            'it failed {0}'.format(pg_dump_path))
-                os.remove(pg_dump_path)
-            raise
 
     def stop_fuel_containers(self):
         """Use docker API to shutdown containers
