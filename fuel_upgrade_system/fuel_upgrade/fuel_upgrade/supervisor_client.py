@@ -14,22 +14,18 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import httplib
-import os
 import logging
-import xmlrpclib
-import supervisor.xmlrpc
+import os
 import stat
-import socket
-
-import yaml
+import supervisor.xmlrpc
+import xmlrpclib
 
 from xmlrpclib import Fault
 
-from fuel_upgrade import utils
 from fuel_upgrade.config import config
 from fuel_upgrade.config import current_version
 from fuel_upgrade.config import new_version
+from fuel_upgrade import utils
 
 logger = logging.getLogger(__name__)
 TEMPLATES_DIR = os.path.abspath(
@@ -128,8 +124,6 @@ class SupervisorClient(object):
         for service in services:
             self.generate_config(service)
 
-        names = [service['service_name'] for service in services]
-
     def generate_config(self, service):
         """Generates config for each service
 
@@ -152,7 +146,7 @@ class SupervisorClient(object):
             self.supervisor_template_path, config_path, params)
 
     def generate_cobbler_config(self, container):
-        """Generates 
+        """Generates cobbler config
 
         :param container: dict `service_name` `container_name`
         """

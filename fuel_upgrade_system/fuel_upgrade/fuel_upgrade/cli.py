@@ -23,8 +23,8 @@ from fuel_upgrade.logger import configure_logger
 logger = configure_logger(config.log_path)
 
 from fuel_upgrade import errors
-from fuel_upgrade.upgrade import DockerUpgrader
 from fuel_upgrade.upgrade import DockerInitializer
+from fuel_upgrade.upgrade import DockerUpgrader
 from fuel_upgrade.upgrade import Upgrade
 
 

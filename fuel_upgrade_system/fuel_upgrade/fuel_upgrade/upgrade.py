@@ -14,7 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import glob
 import logging
 import os
 import time
@@ -29,14 +28,16 @@ import yaml
 from docker import Client
 
 from fuel_upgrade.config import config
-from fuel_upgrade.config import new_version
 from fuel_upgrade.config import current_version
-from fuel_upgrade import errors
-from fuel_upgrade import utils
+from fuel_upgrade.config import new_version
+from fuel_upgrade.supervisor_client import SupervisorClient
 from fuel_upgrade.utils import exec_cmd
 from fuel_upgrade.utils import get_request
 from fuel_upgrade.utils import topological_sorting
-from fuel_upgrade.supervisor_client import SupervisorClient
+
+from fuel_upgrade import errors
+from fuel_upgrade import utils
+
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,8 @@ class DockerUpgrader(object):
 
             docker_image = image['docker_image']
             if not os.path.exists(docker_image):
-                logger.warn(u'Cannot find docker image "{0}"'.format(docker_image))
+                logger.warn(u'Cannot find docker image "{0}"'.format(
+                    docker_image))
                 continue
             # NOTE(eli): docker-py binding
             # doesn't have equal call for
@@ -185,7 +187,8 @@ class DockerUpgrader(object):
         return dict([(k, tuple(v)) for k, v in port_bindings.iteritems()])
 
     def get_ports(self, container):
-        """Docker binding accepts ports as tuple, here we convert from list to tuple.
+        """Docker binding accepts ports as tuple,
+        here we convert from list to tuple.
 
         FIXME(eli): https://github.com/dotcloud/docker-py/blob/
                     73434476b32136b136e1cdb0913fd123126f2a52/
@@ -218,8 +221,11 @@ class DockerUpgrader(object):
         links = []
         if container.get('links'):
             for container_link in container.get('links'):
-                link_container = self.container_by_id(container_link['id'])
-                links.append((link_container['container_name'], container_link['alias']))
+                link_container = self.container_by_id(
+                    container_link['id'])
+                links.append((
+                    link_container['container_name'],
+                    container_link['alias']))
 
         return links
 
@@ -364,8 +370,8 @@ class DockerUpgrader(object):
         # data from postgres container and copies
         # db data to special directory
         postgres_name = self.make_container_name(
-                'postgres',
-                version=current_version.VERSION['release'])
+            'postgres',
+            version=current_version.VERSION['release'])
         previous_db_container = self._get_containers_by_name(
             postgres_name)[0]
 
@@ -470,7 +476,12 @@ class DockerUpgrader(object):
 
         if not params.get('detach'):
             for interval in retries:
-                logs = self.docker_client.logs(container['Id'], stream=True, stdout=True, stderr=True)
+                logs = self.docker_client.logs(
+                    container['Id'],
+                    stream=True,
+                    stdout=True,
+                    stderr=True)
+
                 for log_line in logs:
                     logger.debug(log_line.rstrip())
 
@@ -523,7 +534,9 @@ class DockerUpgrader(object):
             image_name, new_params))
 
         def func_create():
-            return self.docker_client.create_container(image_name, **new_params)
+            return self.docker_client.create_container(
+                image_name,
+                **new_params)
 
         return self.exec_with_retries(
             func_create,
@@ -543,7 +556,8 @@ class DockerUpgrader(object):
             new_container = deepcopy(container)
             new_container['image_name'] = self.make_image_name(
                 container['from_image'])
-            new_container['container_name'] = self.make_container_name(container['id'])
+            new_container['container_name'] = self.make_container_name(
+                container['id'])
             new_containers.append(new_container)
 
         return new_containers
@@ -732,7 +746,7 @@ class Upgrade(object):
 
     def before_upgrade(self):
         logger.debug('Run before upgrade actions')
-        # self.check_upgrade_opportunity()
+        self.check_upgrade_opportunity()
         self.make_backup()
 
     def upgrade(self):

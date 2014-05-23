@@ -39,3 +39,7 @@ class CyclicDependenciesError(FuelUpgradeException):
 
 class CannotFindContainerError(FuelUpgradeException):
     pass
+
+
+class TimeoutError(FuelUpgradeException):
+    pass

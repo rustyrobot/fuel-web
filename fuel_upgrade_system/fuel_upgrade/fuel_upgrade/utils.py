@@ -14,12 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import json
 import logging
 import os
 import subprocess
-import urllib2
-import json
 import time
+import urllib2
 
 from copy import deepcopy
 
@@ -146,7 +146,7 @@ def wait_for_true(check, timeout=60):
         if result:
             return result
         if time.time() - start_time > timeout:
-            raise TimeoutError(
+            raise errors.TimeoutError(
                 'Failed to execute '
                 'command with timeout {0}'.format(timeout))
         time.sleep(0.1)
