@@ -22,12 +22,15 @@ import traceback
 
 from copy import deepcopy
 
-import requests
-
 import docker
+import requests
+import yaml
+
 from docker import Client
 
 from fuel_upgrade.config import config
+from fuel_upgrade.config import new_version
+from fuel_upgrade.config import current_version
 from fuel_upgrade import errors
 from fuel_upgrade import utils
 from fuel_upgrade.utils import exec_cmd
@@ -49,7 +52,7 @@ class DockerUpgrader(object):
         """
         self.update_path = update_path
         self.working_directory = os.path.join(
-            config.working_directory, config.version)
+            config.working_directory, new_version.VERSION['release'])
 
         utils.create_dir_if_not_exists(self.working_directory)
 
@@ -90,6 +93,29 @@ class DockerUpgrader(object):
         self.stop_fuel_containers()
         self.supervisor.restart_and_wait()
 
+    def post_upgrade_actions(self):
+        """Post upgrade actions
+
+        * create new version yaml file
+        * and create symlink to /etc/fuel/version.yaml
+        """
+        logger.info(u'Run post upgrade actions')
+        new_config = new_version.to_yaml()
+        base_config_dir = '/etc/fuel/{0}'.format(
+            new_version.VERSION['release'])
+        new_version_path = '{0}/version.yaml'.format(
+            base_config_dir)
+        utils.create_dir_if_not_exists(base_config_dir)
+        with open(new_version_path, 'w') as f:
+            f.write(yaml.dump(new_config, default_flow_style=False))
+
+        if os.path.exists(config.current_fuel_version_path):
+            os.remove(config.current_fuel_version_path)
+
+        logger.info(u'Create symlink from {0} to {1}'.format(
+            new_version_path, config.current_fuel_version_path))
+        os.symlink(new_version_path, config.current_fuel_version_path)
+
     def upload_images(self):
         """Uploads images to docker
         """
@@ -120,7 +146,7 @@ class DockerUpgrader(object):
 
         for container_id in containers_to_creation:
             container = self.container_by_id(container_id)
-            logger.debug(u'Started  {0}'.format(container))
+            logger.debug(u'Start container {0}'.format(container))
 
             links = self.get_container_links(container)
 
@@ -132,10 +158,9 @@ class DockerUpgrader(object):
                 detach=False)
 
             volumes_from = []
-            if container.get('volumes_from'):
-                for container_id in container.get('volumes_from'):
-                    volume_container = self.container_by_id(container_id)
-                    volumes_from.append(volume_container['container_name'])
+            for container_id in container.get('volumes_from', []):
+                volume_container = self.container_by_id(container_id)
+                volumes_from.append(volume_container['container_name'])
 
             self.start_container(
                 created_container,
@@ -227,7 +252,8 @@ class DockerUpgrader(object):
                 'command': u'docker start -a {0}'.format(
                     container['container_name'])
             }
-            configs.append(params)
+            if container['supervisor_config']:
+                configs.append(params)
 
         self.supervisor.generate_configs(configs)
 
@@ -334,18 +360,22 @@ class DockerUpgrader(object):
         hardcoded logic all this logic must
         be described in configuration file
         """
-
         # FIXME(eli): Here is dirty hack which copies
-        # data from hardcoded container and copies
+        # data from postgres container and copies
         # db data to special directory
-        previous_db_container = self._get_containers_by_name('fuel-core-5.0-postgres')[0]
+        postgres_name = self.make_container_name(
+                'postgres',
+                version=current_version.VERSION['release'])
+        previous_db_container = self._get_containers_by_name(
+            postgres_name)[0]
+
         cmd = 'docker cp {0}:{1} {2}'.format(
             previous_db_container['Id'],
             '/var/lib/pgsql',
             '/var/lib/')
         logger.debug(cmd)
         exec_cmd(cmd)
-        
+
         volume_container = self.container_by_id('volume_db')
         logger.info(u'Run volume_db container %s', volume_container)
         self.run(
@@ -513,11 +543,23 @@ class DockerUpgrader(object):
             new_container = deepcopy(container)
             new_container['image_name'] = self.make_image_name(
                 container['from_image'])
-            new_container['container_name'] = u'{0}{1}-{2}'.format(
-                config.container_prefix, config.version, container['id'])
+            new_container['container_name'] = self.make_container_name(container['id'])
             new_containers.append(new_container)
 
         return new_containers
+
+    def make_container_name(
+            self,
+            container_id,
+            version=new_version.VERSION['release']):
+
+        """Returns container name
+
+        :params container_id: container's id
+        :returns: name of the container
+        """
+        return u'{0}{1}-{2}'.format(
+            config.container_prefix, version, container_id)
 
     @property
     def new_release_images(self):
@@ -542,7 +584,9 @@ class DockerUpgrader(object):
 
     def make_image_name(self, name):
         return u'{0}{1}_{2}'.format(
-            config.image_prefix, name, config.version)
+            config.image_prefix,
+            name,
+            new_version.VERSION['release'])
 
     def container_by_id(self, container_id):
         """Get container from new release by id
@@ -625,7 +669,9 @@ class DockerUpgrader(object):
 
 class DockerInitializer(DockerUpgrader):
     """Logic for docker containers installation
-    on new system. Used for development.
+    on new system. Used for development. In the
+    future will replace bash scripts for node
+    bootstraping.
     """
 
     def upgrade(self):
@@ -673,12 +719,16 @@ class Upgrade(object):
 
         try:
             self.upgrade()
-            self.after_upgrade()
+            self.after_upgrade_checks()
         except Exception as exc:
             logger.error(u'Upgrade failed: {0}'.format(exc))
             logger.error(traceback.format_exc())
             if not self.disable_rollback:
                 self.rollback()
+
+            raise
+
+        self.upgrade_engine.post_upgrade_actions()
 
     def before_upgrade(self):
         logger.debug('Run before upgrade actions')
@@ -689,9 +739,8 @@ class Upgrade(object):
         logger.debug('Run upgrade')
         self.upgrade_engine.upgrade()
 
-    def after_upgrade(self):
+    def after_upgrade_checks(self):
         logger.debug('Run after upgrade actions')
-        self.run_services()
         self.check_health()
 
     def make_backup(self):
@@ -723,9 +772,6 @@ class Upgrade(object):
                 ' '.join(tasks_msg))
 
             raise errors.CannotRunUpgrade(error_msg)
-
-    def run_services(self):
-        logger.debug('Run services')
 
     def check_health(self):
         logger.debug('Check that upgrade passed correctly')

@@ -28,6 +28,8 @@ from xmlrpclib import Fault
 
 from fuel_upgrade import utils
 from fuel_upgrade.config import config
+from fuel_upgrade.config import current_version
+from fuel_upgrade.config import new_version
 
 logger = logging.getLogger(__name__)
 TEMPLATES_DIR = os.path.abspath(
@@ -41,7 +43,8 @@ class SupervisorClient(object):
             TEMPLATES_DIR, 'supervisor.conf')
         self.supervisor_common_template_path = os.path.join(
             TEMPLATES_DIR, 'common.conf')
-        self.supervisor_config_dir = self.make_config_path(config.version)
+        self.supervisor_config_dir = self.make_config_path(
+            new_version.VERSION['release'])
 
         utils.create_dir_if_not_exists(self.supervisor_config_dir)
 
@@ -77,8 +80,7 @@ class SupervisorClient(object):
     def switch_to_previous_configs(self):
         """Switch to previous version of fuel
         """
-        versions_config = open(config.fuel_config_path, 'r')
-        previous_version = yaml.load(versions_config)['VERSION']['release']
+        previous_version = current_version.VERSION['release']
         previous_config_path = self.make_config_path(previous_version)
         current_cfg_path = config.supervisor['current_configs_prefix']
 

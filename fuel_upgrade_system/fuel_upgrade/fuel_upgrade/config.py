@@ -23,15 +23,20 @@ class Config(object):
     """Config object, returns None if field doesn't exist
     """
 
-    def __init__(self):
-        config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
+    def __init__(self, config_path):
         self.config = yaml.load(file(config_path, 'r'))
 
     def __getattr__(self, name):
         return self.config.get(name, None)
 
-    def __repr__(self):
-        self.config
+    def to_yaml(self):
+        return self.config
 
 
-config = Config()
+def make_config_path(file_name):
+    return os.path.join(os.path.dirname(__file__), file_name)
+
+
+config = Config(make_config_path('config.yaml'))
+current_version = Config(config.current_fuel_version_path)
+new_version = Config(make_config_path('version.yaml'))

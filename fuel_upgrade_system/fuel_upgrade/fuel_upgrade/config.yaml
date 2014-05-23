@@ -1,9 +1,9 @@
-version: '5.1'
+current_fuel_version_path: /etc/fuel/version.yaml
+
 working_directory: /var/lib/fuel_upgrade/
 log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
 images_extension: tar
-fuel_config_path: /etc/fuel/version.yaml
 
 docker:
   url: unix://var/run/docker.sock
@@ -42,6 +42,7 @@ images:
 containers:
 
   - id: nailgun
+    supervisor_config: True
     from_image: nailgun
     post_build_command: "puppet apply -v /etc/puppet/modules/nailgun/examples/nailgun-only.pp"
     port_bindings:
@@ -65,6 +66,7 @@ containers:
 
 
   - id: astute
+    supervisor_config: True
     from_image: astute
     volumes_from:
       - volume_logs
@@ -74,6 +76,7 @@ containers:
 
 
   - id: cobbler
+    supervisor_config: True
     from_image: cobbler
     privileged: true
     port_bindings:
@@ -105,6 +108,7 @@ containers:
 
 
   - id: mcollective
+    supervisor_config: True
     from_image: mcollective
     privileged: true
     volumes_from:
@@ -117,6 +121,7 @@ containers:
 
 
   - id: rsync
+    supervisor_config: True
     from_image: rsync
     port_bindings:
       873:
@@ -132,6 +137,7 @@ containers:
 
 
   - id: rsyslog
+    supervisor_config: True
     from_image: rsyslog
     port_bindings:
       514:
@@ -150,6 +156,7 @@ containers:
 
 
   - id: nginx
+    supervisor_config: True
     from_image: nginx
     port_bindings:
       8000:
@@ -177,6 +184,7 @@ containers:
 
 
   - id: rabbitmq
+    supervisor_config: True
     from_image: rabbitmq
     port_bindings:
       5672:
@@ -203,6 +211,7 @@ containers:
 
 
   - id: ostf
+    supervisor_config: True
     from_image: ostf
     post_build_command: 'puppet apply -v /etc/puppet/modules/nailgun/examples/ostf-only.pp'
     port_bindings:
@@ -224,6 +233,7 @@ containers:
 
 
   - id: postgresql
+    supervisor_config: True
     from_image: postgres
     port_bindings:
       5432:
@@ -239,6 +249,7 @@ containers:
 
 
   - id: volume_db
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -250,6 +261,7 @@ containers:
 
 
   - id: volume_repos
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -261,6 +273,7 @@ containers:
 
 
   - id: volume_logs
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -272,6 +285,7 @@ containers:
 
 
   - id: volume_ssh_keys
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -283,6 +297,7 @@ containers:
 
 
   - id: volume_dump
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -294,6 +309,7 @@ containers:
 
 
   - id: volume_fuel_configs
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
@@ -304,6 +320,7 @@ containers:
         ro: False
 
   - id: volume_puppet_manifests
+    supervisor_config: False
     from_image: busybox
     post_build_command: 'true'
     volumes:
