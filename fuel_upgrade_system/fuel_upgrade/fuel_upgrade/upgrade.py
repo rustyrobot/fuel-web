@@ -368,7 +368,10 @@ class DockerUpgrader(object):
         """
         # FIXME(eli): Here is dirty hack which copies
         # data from postgres container and copies
-        # db data to special directory
+        # db data to special directory, because
+        # docker does not allow us to inject files
+        # into the container
+        # https://github.com/dotcloud/docker/issues/5846
         postgres_name = self.make_container_name(
             'postgres',
             version=current_version.VERSION['release'])
