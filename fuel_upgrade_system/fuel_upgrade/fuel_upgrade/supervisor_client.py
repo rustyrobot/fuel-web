@@ -17,14 +17,11 @@
 import logging
 import os
 import stat
-import supervisor.xmlrpc
 import xmlrpclib
+import httplib
 
 from xmlrpclib import Fault
 
-from fuel_upgrade.config import config
-from fuel_upgrade.config import current_version
-from fuel_upgrade.config import new_version
 from fuel_upgrade import utils
 
 logger = logging.getLogger(__name__)
@@ -32,32 +29,58 @@ TEMPLATES_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), 'templates'))
 
 
+class UnixSocketHTTPConnection(httplib.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self.host)
+
+
+class UnixSocketHTTP(httplib.HTTP):
+    _connection_class = UnixSocketHTTPConnection
+
+
+class UnixSocketTransport(xmlrpclib.Transport, object):
+    """Http transport for UNIX socket
+    """
+
+    def __init__(self, socket_path):
+        """
+        Create object
+
+        :params socket_path: path to the socket
+        """
+        self.socket_path = socket_path
+        super(UnixSocketTransport, self).__init__()
+
+    def make_connection(self, host):
+        return UnixSocketHTTP(self.socket_path)
+
+
 class SupervisorClient(object):
 
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
         self.supervisor_template_path = os.path.join(
             TEMPLATES_DIR, 'supervisor.conf')
         self.supervisor_common_template_path = os.path.join(
             TEMPLATES_DIR, 'common.conf')
         self.supervisor_config_dir = self.make_config_path(
-            new_version.VERSION['release'])
+            self.config.new_version['VERSION']['release'])
 
         utils.create_dir_if_not_exists(self.supervisor_config_dir)
 
     def make_config_path(self, version):
         return os.path.join(
-            config.supervisor['configs_prefix'], version)
+            self.config.supervisor['configs_prefix'], version)
 
     @property
     def supervisor(self):
         """Returns supervisor rpc object
         """
-        # TODO(eli): remove dependencies on supervisor
-        # implement unix socket connecter
         self.server = xmlrpclib.Server(
-            'http://127.0.0.1',
-            transport=supervisor.xmlrpc.SupervisorTransport(
-                None, None, serverurl=config.supervisor['endpoint']))
+            'http://unused_variable',
+            transport=UnixSocketTransport(
+                self.config.supervisor['endpoint']))
 
         return self.server.supervisor
 
@@ -66,7 +89,7 @@ class SupervisorClient(object):
         for supervisor. Creates symlink on special
         directory.
         """
-        current_cfg_path = config.supervisor['current_configs_prefix']
+        current_cfg_path = self.config.supervisor['current_configs_prefix']
         logger.debug(u'Create symlink from "{0}" to "{1}"'.format(
             self.supervisor_config_dir, current_cfg_path))
         if os.path.exists(current_cfg_path):
@@ -76,9 +99,9 @@ class SupervisorClient(object):
     def switch_to_previous_configs(self):
         """Switch to previous version of fuel
         """
-        previous_version = current_version.VERSION['release']
+        previous_version = self.config.current_version['VERSION']['release']
         previous_config_path = self.make_config_path(previous_version)
-        current_cfg_path = config.supervisor['current_configs_prefix']
+        current_cfg_path = self.config.supervisor['current_configs_prefix']
 
         logger.debug(u'Create symlink from "{0}" to "{1}"'.format(
             previous_config_path, current_cfg_path))
@@ -107,7 +130,7 @@ class SupervisorClient(object):
 
         all_processes = utils.wait_for_true(
             get_all_processes,
-            timeout=config.supervisor['restart_timeout'])
+            timeout=self.config.supervisor['restart_timeout'])
 
         logger.debug(u'List of supervisor processes {0}'.format(
             all_processes))

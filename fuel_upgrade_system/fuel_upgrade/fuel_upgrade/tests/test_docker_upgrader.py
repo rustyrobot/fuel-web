@@ -23,65 +23,32 @@ from fuel_upgrade.tests.base import BaseTestCase
 from fuel_upgrade.upgrade import DockerUpgrader
 
 
-@mock.patch('fuel_upgrade.upgrade.exec_cmd')
+@mock.patch('fuel_upgrade.upgrade.utils.exec_cmd')
 class TestDockerUpgrader(BaseTestCase):
 
     def setUp(self):
-        # NOTE (eli): it doesn't work correctly
-        # when we try to patch docker client via
+        # NOTE (eli): mocking doesn't work correctly
+        # when we try to patch docker client with
         # class decorator, it's the reason why
         # we have to do it explicitly
-        self.client_patcher = mock.patch('fuel_upgrade.upgrade.Client')
-        self.client_mock_class = self.client_patcher.start()
-        self.client_mock = mock.MagicMock()
-        self.client_mock_class.return_value = self.client_mock
+        self.docker_patcher = mock.patch('fuel_upgrade.upgrade.Client')
+        self.docker_mock_class = self.docker_patcher.start()
+        self.docker_mock = mock.MagicMock()
+        self.docker_mock_class.return_value = self.docker_mock
+
+        self.supervisor_patcher = mock.patch('fuel_upgrade.upgrade.SupervisorClient')
+        self.supervisor_class = self.supervisor_patcher.start()
+        self.supervisor_mock = mock.MagicMock()
+        self.supervisor_class.return_value = self.supervisor_mock
 
         self.update_path = '/tmp/new_update'
         with mock.patch('os.makedirs'):
-            self.upgrader = DockerUpgrader(self.update_path)
-
-        self.pg_dump_path = os.path.join(
-            self.upgrader.working_directory, 'pg_dump_all.sql')
+            self.upgrader = DockerUpgrader(
+                self.update_path, self.fake_config)
 
     def tearDown(self):
-        self.client_patcher.stop()
-
-    def assert_pg_dump(self, mock):
-        mock.assert_called_once_with(
-            "su postgres -c 'pg_dumpall'"
-            " > {0}".format(self.pg_dump_path))
-
-    def test_backup_db_backup_does_not_exist(self, exec_cmd):
-        with mock.patch(
-                'fuel_upgrade.upgrade.os.path.exists', return_value=False):
-            self.upgrader.backup_db()
-
-        self.assert_pg_dump(exec_cmd)
-
-    def test_backup_db_do_nothing_if_backup_exists(self, exec_cmd):
-        with mock.patch(
-                'fuel_upgrade.upgrade.os.path.exists', return_value=True):
-            self.upgrader.backup_db()
-
-        self.method_was_not_called(exec_cmd)
-
-    @mock.patch(
-        'fuel_upgrade.upgrade.os.path.exists',
-        side_effect=[False, True])
-    @mock.patch('fuel_upgrade.upgrade.os.remove')
-    def test_backup_db_removes_file_in_case_of_error(
-            self, remove, _, __):
-        with mock.patch(
-                'fuel_upgrade.upgrade.exec_cmd',
-                side_effect=errors.ExecutedErrorNonZeroExitCode(
-                    'error')) as cmd_mock:
-
-            self.assertRaises(
-                errors.ExecutedErrorNonZeroExitCode,
-                self.upgrader.backup_db)
-
-        self.assert_pg_dump(cmd_mock)
-        remove.assert_called_once_with(self.pg_dump_path)
+        self.docker_patcher.stop()
+        self.supervisor_patcher.stop()
 
     @mock.patch('fuel_upgrade.upgrade.time.sleep')
     def test_run_with_retries(self, sleep, _):
@@ -95,15 +62,66 @@ class TestDockerUpgrader(BaseTestCase):
                 retries_count=retries_count)
 
         self.assertEquals(sleep.call_count, retries_count)
-        self.called_once(self.client_mock.create_container)
+        self.called_once(self.docker_mock.create_container)
 
     def test_run_without_errors(self, exec_cmd):
         image_name = 'test_image'
-        self.client_mock.wait.return_value = 0
+        self.docker_mock.wait.return_value = 0
 
         self.upgrader.run(image_name)
 
-        self.called_once(self.client_mock.create_container)
-        self.called_once(self.client_mock.logs)
-        self.called_once(self.client_mock.start)
-        self.called_once(self.client_mock.wait)
+        self.called_once(self.docker_mock.create_container)
+        self.called_once(self.docker_mock.logs)
+        self.called_once(self.docker_mock.start)
+        self.called_once(self.docker_mock.wait)
+
+
+    def mock_methods(self, obj, methods):
+        for method in methods:
+            setattr(obj, method, mock.MagicMock())
+        
+    def test_upgrade(self, _):
+        mocked_methods = [
+            'stop_fuel_containers',
+            'upload_images',
+            'run_post_build_actions',
+            'create_containers',
+            'generate_configs',
+            'switch_to_new_configs']
+
+        self.mock_methods(self.upgrader, mocked_methods)
+        self.upgrader.upgrade()
+
+        # Check that all methods was called once
+        # except stop_fuel_containers method
+        for method in mocked_methods[1:-1]:
+            self.called_once(getattr(self.upgrader, method))
+
+        self.called_times(self.upgrader.stop_fuel_containers, 3)
+
+        self.called_once(self.supervisor_mock.stop_all_services)
+        self.called_once(self.supervisor_mock.restart_and_wait)
+
+    def test_rollback(self, _):
+        self.upgrader.stop_fuel_containers = mock.MagicMock()
+        self.upgrader.rollback()
+
+        self.called_times(self.upgrader.stop_fuel_containers, 1)
+        self.called_once(self.supervisor_mock.switch_to_previous_configs)
+        self.called_once(self.supervisor_mock.stop_all_services)
+        self.called_once(self.supervisor_mock.restart_and_wait)
+
+    def test_stop_fuel_containers(self, _):
+        non_fuel_images = [
+            'first_image_1.0', 'second_image_2.0', 'third_image_2.0']
+        fuel_images = [
+            'fuel/image_1.0', 'fuel/image_2.0']
+
+        all_images = [{'Image': v, 'Id': i}
+                      for i, v in enumerate(non_fuel_images + fuel_images)]
+
+        self.docker_mock.containers.return_value = all_images
+        self.upgrader.stop_fuel_containers()
+        self.assertEquals(
+            self.docker_mock.stop.call_args_list, [((3, 10),), ((4, 10),)])
+

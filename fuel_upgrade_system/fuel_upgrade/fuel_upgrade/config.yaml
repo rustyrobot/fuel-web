@@ -1,7 +1,6 @@
 current_fuel_version_path: /etc/fuel/version.yaml
 
 working_directory: /var/lib/fuel_upgrade/
-log_path: /var/log/fuel_upgrade.log
 puppet_modules_dir: puppet_modules
 images_extension: tar
 

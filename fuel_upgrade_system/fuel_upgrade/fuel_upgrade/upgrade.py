@@ -27,16 +27,10 @@ import yaml
 
 from docker import Client
 
-from fuel_upgrade.config import config
-from fuel_upgrade.config import current_version
-from fuel_upgrade.config import new_version
-from fuel_upgrade.supervisor_client import SupervisorClient
-from fuel_upgrade.utils import exec_cmd
-from fuel_upgrade.utils import get_request
-from fuel_upgrade.utils import topological_sorting
 
 from fuel_upgrade import errors
 from fuel_upgrade import utils
+from fuel_upgrade.supervisor_client import SupervisorClient
 
 
 logger = logging.getLogger(__name__)
@@ -46,23 +40,25 @@ class DockerUpgrader(object):
     """Docker management system for upgrades
     """
 
-    def __init__(self, update_path):
+    def __init__(self, update_path, config):
         """Initializes docker upgrade object
 
         :param update_path: path with files for update
         """
+        self.config = config
         self.update_path = update_path
         self.working_directory = os.path.join(
-            config.working_directory, new_version.VERSION['release'])
+            self.config.working_directory,
+            self.config.new_version['VERSION']['release'])
 
         utils.create_dir_if_not_exists(self.working_directory)
 
         self.docker_client = Client(
-            base_url=config.docker['url'],
-            version=config.docker['api_version'],
-            timeout=config.docker['http_timeout'])
+            base_url=self.config.docker['url'],
+            version=self.config.docker['api_version'],
+            timeout=self.config.docker['http_timeout'])
 
-        self.supervisor = SupervisorClient()
+        self.supervisor = SupervisorClient(self.config)
 
     def backup(self):
         """We don't need to backup containers
@@ -101,21 +97,21 @@ class DockerUpgrader(object):
         * and create symlink to /etc/fuel/version.yaml
         """
         logger.info(u'Run post upgrade actions')
-        new_config = new_version.to_yaml()
+        new_config = self.config.new_version.to_yaml()
         base_config_dir = '/etc/fuel/{0}'.format(
-            new_version.VERSION['release'])
+            self.config.new_version['VERSION']['release'])
         new_version_path = '{0}/version.yaml'.format(
             base_config_dir)
         utils.create_dir_if_not_exists(base_config_dir)
         with open(new_version_path, 'w') as f:
             f.write(yaml.dump(new_config, default_flow_style=False))
 
-        if os.path.exists(config.current_fuel_version_path):
-            os.remove(config.current_fuel_version_path)
+        if os.path.exists(self.config.current_fuel_version_path):
+            os.remove(self.config.current_fuel_version_path)
 
         logger.info(u'Create symlink from {0} to {1}'.format(
-            new_version_path, config.current_fuel_version_path))
-        os.symlink(new_version_path, config.current_fuel_version_path)
+            new_version_path, self.config.current_fuel_version_path))
+        os.symlink(new_version_path, self.config.current_fuel_version_path)
 
     def upload_images(self):
         """Uploads images to docker
@@ -142,7 +138,7 @@ class DockerUpgrader(object):
         logger.info(u'Started containers creation')
         graph = self.build_dependencies_graph(self.new_release_containers)
         logger.debug(u'Built dependencies graph {0}'.format(graph))
-        containers_to_creation = topological_sorting(graph)
+        containers_to_creation = utils.topological_sorting(graph)
         logger.debug(u'Resolved creation order {0}'.format(
             containers_to_creation))
 
@@ -329,7 +325,7 @@ class DockerUpgrader(object):
         """
         containers = self.docker_client.containers(limit=-1)
         containers_to_stop = filter(
-            lambda c: c['Image'].startswith(config.image_prefix),
+            lambda c: c['Image'].startswith(self.config.image_prefix),
             containers)
 
         for container in containers_to_stop:
@@ -346,7 +342,7 @@ class DockerUpgrader(object):
 
         try:
             self.docker_client.stop(
-                container_id, config.docker['stop_container_timeout'])
+                container_id, self.config.docker['stop_container_timeout'])
         except requests.exceptions.Timeout:
             # NOTE(eli): docker use SIGTERM signal
             # to stop container if timeout expired
@@ -357,7 +353,7 @@ class DockerUpgrader(object):
                 u'Couldn\'t stop ctonainer, try '
                 'to stop it again: {0}'.format(container_id))
             self.docker_client.stop(
-                container_id, config.docker['stop_container_timeout'])
+                container_id, self.config.docker['stop_container_timeout'])
 
     def run_post_build_actions(self):
         """Run db migration for installed services
@@ -374,7 +370,7 @@ class DockerUpgrader(object):
         # https://github.com/dotcloud/docker/issues/5846
         postgres_name = self.make_container_name(
             'postgres',
-            version=current_version.VERSION['release'])
+            version=self.config.current_version['VERSION']['release'])
         previous_db_container = self._get_containers_by_name(
             postgres_name)[0]
 
@@ -383,7 +379,7 @@ class DockerUpgrader(object):
             '/var/lib/pgsql',
             '/var/lib/')
         logger.debug(cmd)
-        exec_cmd(cmd)
+        utils.exec_cmd(cmd)
 
         volume_container = self.container_by_id('volume_db')
         logger.info(u'Run volume_db container %s', volume_container)
@@ -543,7 +539,7 @@ class DockerUpgrader(object):
 
         return self.exec_with_retries(
             func_create,
-            docker.errors.APIError,
+            docker.APIError,
             "Can't set cookie",
             retries=3,
             interval=2)
@@ -555,7 +551,7 @@ class DockerUpgrader(object):
         """
         new_containers = []
 
-        for container in config.containers:
+        for container in self.config.containers:
             new_container = deepcopy(container)
             new_container['image_name'] = self.make_image_name(
                 container['from_image'])
@@ -568,15 +564,18 @@ class DockerUpgrader(object):
     def make_container_name(
             self,
             container_id,
-            version=new_version.VERSION['release']):
+            version=None):
 
         """Returns container name
 
         :params container_id: container's id
         :returns: name of the container
         """
+        if version is None:
+            version = self.config.new_version['VERSION']['release']
+
         return u'{0}{1}-{2}'.format(
-            config.container_prefix, version, container_id)
+            self.config.container_prefix, version, container_id)
 
     @property
     def new_release_images(self):
@@ -585,13 +584,13 @@ class DockerUpgrader(object):
         """
         new_images = []
 
-        for image in config.images:
+        for image in self.config.images:
             new_image = deepcopy(image)
             new_image['name'] = self.make_image_name(
                 image['id'])
             new_image['docker_image'] = os.path.join(
                 self.update_path,
-                image['id'] + '.' + config.images_extension)
+                image['id'] + '.' + self.config.images_extension)
             new_image['docker_file'] = os.path.join(
                 self.update_path, image['id'])
 
@@ -601,9 +600,9 @@ class DockerUpgrader(object):
 
     def make_image_name(self, name):
         return u'{0}{1}_{2}'.format(
-            config.image_prefix,
+            self.config.image_prefix,
             name,
-            new_version.VERSION['release'])
+            self.config.new_version['VERSION']['release'])
 
     def container_by_id(self, container_id):
         """Get container from new release by id
@@ -716,6 +715,7 @@ class Upgrade(object):
 
     def __init__(self,
                  update_path,
+                 config,
                  upgrade_engine,
                  disable_rollback=False):
 
@@ -727,6 +727,7 @@ class Upgrade(object):
                 upgrade_engine.__class__.__name__,
                 disable_rollback))
 
+        self.config = config
         self.update_path = update_path
         self.upgrade_engine = upgrade_engine
         self.disable_rollback = disable_rollback
@@ -768,13 +769,16 @@ class Upgrade(object):
         """Sends request to nailgun
         to make sure that there are no
         running tasks
+
+        TODO(eli): move this logic to separate
+        class
         """
         logger.info('Check upgrade opportunity')
-        nailgun = config.endpoints['nailgun']
+        nailgun = self.config.endpoints['nailgun']
         tasks_url = 'http://{0}:{1}/api/v1/tasks'.format(
             nailgun['host'], nailgun['port'])
 
-        tasks = get_request(tasks_url)
+        tasks = utils.get_request(tasks_url)
 
         running_tasks = filter(
             lambda t: t['status'] == 'running', tasks)
