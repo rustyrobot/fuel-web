@@ -77,12 +77,12 @@ class SupervisorClient(object):
     def supervisor(self):
         """Returns supervisor rpc object
         """
-        self.server = xmlrpclib.Server(
+        server = xmlrpclib.Server(
             'http://unused_variable',
             transport=UnixSocketTransport(
                 self.config.supervisor['endpoint']))
 
-        return self.server.supervisor
+        return server.supervisor
 
     def switch_to_new_configs(self):
         """Switch to new version of configs
@@ -90,11 +90,8 @@ class SupervisorClient(object):
         directory.
         """
         current_cfg_path = self.config.supervisor['current_configs_prefix']
-        logger.debug(u'Create symlink from "{0}" to "{1}"'.format(
-            self.supervisor_config_dir, current_cfg_path))
-        if os.path.exists(current_cfg_path):
-            os.remove(current_cfg_path)
-        os.symlink(self.supervisor_config_dir, current_cfg_path)
+
+        utils.symlink(self.supervisor_config_dir, current_cfg_path)
 
     def switch_to_previous_configs(self):
         """Switch to previous version of fuel
@@ -103,12 +100,7 @@ class SupervisorClient(object):
         previous_config_path = self.make_config_path(previous_version)
         current_cfg_path = self.config.supervisor['current_configs_prefix']
 
-        logger.debug(u'Create symlink from "{0}" to "{1}"'.format(
-            previous_config_path, current_cfg_path))
-
-        if os.path.exists(current_cfg_path):
-            os.remove(current_cfg_path)
-        os.symlink(previous_config_path, current_cfg_path)
+        utils.symlink(previous_config_path, current_cfg_path)
 
     def stop_all_services(self):
         """Stops all processes

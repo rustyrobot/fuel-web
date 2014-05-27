@@ -53,6 +53,7 @@ class BaseTestCase(TestCase):
         conf.config['current_version'] = deepcopy(
             conf.config['new_version'])
 
-        conf.current_version['VERSION']['release'] = '9999'
+        conf.new_version['VERSION']['release'] = '9999'
+        conf.current_version['VERSION']['release'] = '0'
 
         return conf

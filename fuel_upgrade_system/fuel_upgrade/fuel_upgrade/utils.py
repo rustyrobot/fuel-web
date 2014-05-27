@@ -150,3 +150,18 @@ def wait_for_true(check, timeout=60):
                 'Failed to execute '
                 'command with timeout {0}'.format(timeout))
         time.sleep(0.1)
+
+
+def symlink(from_path, to_path):
+    """Create symlink, in remove old
+    if it was created
+
+    :param from_path: symlink from
+    :param to_path: symlink to
+    """
+    logger.debug(
+        u'Create symlink from "{0}" to "{1}"'.format(from_path, to_path))
+
+    if os.path.exists(to_path):
+        os.remove(to_path)
+    os.symlink(from_path, to_path)

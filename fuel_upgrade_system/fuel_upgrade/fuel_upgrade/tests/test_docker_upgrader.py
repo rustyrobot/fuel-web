@@ -36,7 +36,8 @@ class TestDockerUpgrader(BaseTestCase):
         self.docker_mock = mock.MagicMock()
         self.docker_mock_class.return_value = self.docker_mock
 
-        self.supervisor_patcher = mock.patch('fuel_upgrade.upgrade.SupervisorClient')
+        self.supervisor_patcher = mock.patch(
+            'fuel_upgrade.upgrade.SupervisorClient')
         self.supervisor_class = self.supervisor_patcher.start()
         self.supervisor_mock = mock.MagicMock()
         self.supervisor_class.return_value = self.supervisor_mock
@@ -74,7 +75,6 @@ class TestDockerUpgrader(BaseTestCase):
         self.called_once(self.docker_mock.logs)
         self.called_once(self.docker_mock.start)
         self.called_once(self.docker_mock.wait)
-
 
     def mock_methods(self, obj, methods):
         for method in methods:
@@ -125,3 +125,122 @@ class TestDockerUpgrader(BaseTestCase):
         self.assertEquals(
             self.docker_mock.stop.call_args_list, [((3, 10),), ((4, 10),)])
 
+    @mock.patch('fuel_upgrade.upgrade.os.path.exists', return_value=True)
+    def test_upload_images(self, _, exec_mock):
+        self.upgrader.new_release_images = [
+            {'docker_image': 'image1'},
+            {'docker_image': 'image2'}]
+
+        self.upgrader.upload_images()
+        self.assertEquals(
+            exec_mock.call_args_list,
+            [(('docker load < "image1"',),),
+             (('docker load < "image2"',),)])
+
+    def test_create_containers(self, _):
+        self.upgrader.new_release_containers = [
+            {'id': 'id1',
+             'container_name': 'name1',
+             'image_name': 'i_name1',
+             'volumes_from': ['id2']},
+            {'id': 'id2',
+             'image_name': 'i_name2',
+             'container_name': 'name2'}]
+
+        def mocked_create_container(*args, **kwargs):
+            """Return name of the container
+            """
+            return kwargs['name']
+
+        self.upgrader.create_container = mock.MagicMock(
+            side_effect=mocked_create_container)
+        self.upgrader.start_container = mock.MagicMock()
+
+        self.upgrader.create_containers()
+
+        create_container_calls = [
+            (('i_name2',), {'detach': False, 'ports': None,
+                            'volumes': None, 'name': 'name2'}),
+            (('i_name1',), {'detach': False, 'ports': None,
+                            'volumes': None, 'name': 'name1'})]
+
+        start_container_calls = [
+            (('name2',), {'volumes_from': [],
+                          'binds': None, 'port_bindings': None,
+                          'privileged': False, 'links': []}),
+            (('name1',), {'volumes_from': ['name2'],
+                          'binds': None, 'port_bindings': None,
+                          'privileged': False, 'links': []})]
+
+        self.assertEquals(
+            self.upgrader.create_container.call_args_list,
+            create_container_calls)
+        self.assertEquals(
+            self.upgrader.start_container.call_args_list,
+            start_container_calls)
+
+    def test_create_container(self, _):
+        self.upgrader.create_container(
+            'image_name', param1=1, param2=2, ports=[1234])
+
+        self.docker_mock.create_container.assert_called_once_with(
+            'image_name', param2=2, param1=1, ports=[1234])
+
+    def test_start_container(self, _):
+        self.upgrader.start_container(
+            {'Id': 'container_id'}, param1=1, param2=2)
+
+        self.docker_mock.start.assert_called_once_with(
+            'container_id', param2=2, param1=1)
+
+    def test_build_dependencies_graph(self, _):
+        containers = [
+            {'id': '1', 'volumes_from': ['2'], 'links': [{'id': '3'}]},
+            {'id': '2', 'volumes_from': [], 'links': []},
+            {'id': '3', 'volumes_from': [], 'links': [{'id': '2'}]},]
+
+        actual_graph = self.upgrader.build_dependencies_graph(containers)
+        expected_graph = {
+            '1': ['3', '2'],
+            '2': [],
+            '3': ['2']}
+
+        self.assertEquals(actual_graph, expected_graph)
+
+    def test_get_container_links(self, _):
+        fake_containers = [
+            {'id': 'id1', 'container_name': 'container_name1',
+             'links': [{'id': 'id2', 'alias': 'alias2'}]},
+            {'id': 'id2', 'container_name': 'container_name2'}]
+        self.upgrader.new_release_containers = fake_containers
+        links = self.upgrader.get_container_links(fake_containers[0])
+        self.assertEquals(links, [('container_name2', 'alias2')])
+
+    def test_get_port_bindings(self, _):
+        port_bindings = {'port_bindings': {'53/udp': ['0.0.0.0', 53]}}
+        bindings = self.upgrader.get_port_bindings(port_bindings)
+        self.assertEquals({'53/udp': ('0.0.0.0', 53)}, bindings)
+
+    def test_get_ports(self, _):
+        ports = self.upgrader.get_ports({'ports': [[53, 'udp'], 100]})
+        self.assertEquals([(53, 'udp'), 100], ports)
+
+    def test_generate_configs(self, _):
+        fake_containers = [
+            {'id': 'id1', 'container_name': 'container_name1',
+             'supervisor_config': False},
+            {'id': 'id2', 'container_name': 'container_name2',
+             'supervisor_config': True},
+            {'id': 'cobbler', 'container_name': 'cobbler_container',
+             'supervisor_config': False}]
+        self.upgrader.new_release_containers = fake_containers
+        self.upgrader.generate_configs()
+        self.supervisor_mock.generate_configs.assert_called_once_with(
+            [{'service_name': 'id2',
+              'command': 'docker start -a container_name2'}])
+        self.supervisor_mock.generate_cobbler_config.assert_called_once_with(
+            {'service_name': 'cobbler', 'container_name': 'cobbler_container'})
+
+    def test_switch_to_new_configs(self, _):
+        self.upgrader.switch_to_new_configs()
+        self.supervisor_mock.switch_to_new_configs.called_once()

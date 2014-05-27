@@ -59,6 +59,8 @@ class DockerUpgrader(object):
             timeout=self.config.docker['http_timeout'])
 
         self.supervisor = SupervisorClient(self.config)
+        self.new_release_images = self.make_new_release_images_list()
+        self.new_release_containers = self.make_new_release_containers_list()
 
     def backup(self):
         """We don't need to backup containers
@@ -359,7 +361,7 @@ class DockerUpgrader(object):
         """Run db migration for installed services
 
         TODO(eli): We have here a lot of
-        hardcoded logic all this logic must
+        hardcoded logic all this logic should
         be described in configuration file
         """
         # FIXME(eli): Here is dirty hack which copies
@@ -544,8 +546,7 @@ class DockerUpgrader(object):
             retries=3,
             interval=2)
 
-    @property
-    def new_release_containers(self):
+    def make_new_release_containers_list(self):
         """Returns list of dicts with information
         for new containers.
         """
@@ -577,8 +578,7 @@ class DockerUpgrader(object):
         return u'{0}{1}-{2}'.format(
             self.config.container_prefix, version, container_id)
 
-    @property
-    def new_release_images(self):
+    def make_new_release_images_list(self):
         """Returns list of dicts with information
         for new images.
         """
