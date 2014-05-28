@@ -46,7 +46,6 @@ class TestUpgrade(BaseTestCase):
         self.assertRaisesRegexp(
             Exception, 'Upgrade failed', upgrader.run)
 
-        engine_mock.backup.assert_called_once_with()
         engine_mock.upgrade.assert_called_once_with()
         engine_mock.rollback.assert_called_once_with()
 
@@ -59,7 +58,6 @@ class TestUpgrade(BaseTestCase):
         self.assertRaisesRegexp(
             Exception, 'Upgrade failed', upgrader.run)
 
-        engine_mock.backup.assert_called_once_with()
         engine_mock.upgrade.assert_called_once_with()
         self.method_was_not_called(engine_mock.rollback)
 
@@ -68,7 +66,6 @@ class TestUpgrade(BaseTestCase):
         upgrader = Upgrade(**self.default_args(upgrade_engine=engine_mock))
         upgrader.run()
 
-        engine_mock.backup.assert_called_once_with()
         engine_mock.upgrade.assert_called_once_with()
         self.method_was_not_called(engine_mock.rollback)
 
