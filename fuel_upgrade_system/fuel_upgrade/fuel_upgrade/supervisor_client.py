@@ -66,6 +66,8 @@ class SupervisorClient(object):
             TEMPLATES_DIR, 'common.conf')
         self.supervisor_config_dir = self.make_config_path(
             self.config.new_version['VERSION']['release'])
+        self.previous_supervisor_config_path = self.make_config_path(
+            self.config.current_version['VERSION']['release'])
 
         utils.create_dir_if_not_exists(self.supervisor_config_dir)
 
@@ -96,11 +98,11 @@ class SupervisorClient(object):
     def switch_to_previous_configs(self):
         """Switch to previous version of fuel
         """
-        previous_version = self.config.current_version['VERSION']['release']
-        previous_config_path = self.make_config_path(previous_version)
         current_cfg_path = self.config.supervisor['current_configs_prefix']
 
-        utils.symlink(previous_config_path, current_cfg_path)
+        utils.symlink(
+            self.previous_supervisor_config_path,
+            current_cfg_path)
 
     def stop_all_services(self):
         """Stops all processes
@@ -166,9 +168,9 @@ class SupervisorClient(object):
         :param container: dict `service_name` `container_name`
         """
         container_name = container['container_name']
-        script_path = os.path.join('/usr/bin', container_name)
         script_template_path = os.path.join(
             TEMPLATES_DIR, 'cobbler_runner')
+        script_path = os.path.join('/usr/bin', container_name)
 
         utils.render_template_to_file(
             script_template_path,
