@@ -14,8 +14,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
-
 import mock
 
 from fuel_upgrade import errors
@@ -79,7 +77,7 @@ class TestDockerUpgrader(BaseTestCase):
     def mock_methods(self, obj, methods):
         for method in methods:
             setattr(obj, method, mock.MagicMock())
-        
+
     def test_upgrade(self, _):
         mocked_methods = [
             'stop_fuel_containers',
@@ -197,7 +195,7 @@ class TestDockerUpgrader(BaseTestCase):
         containers = [
             {'id': '1', 'volumes_from': ['2'], 'links': [{'id': '3'}]},
             {'id': '2', 'volumes_from': [], 'links': []},
-            {'id': '3', 'volumes_from': [], 'links': [{'id': '2'}]},]
+            {'id': '3', 'volumes_from': [], 'links': [{'id': '2'}]}]
 
         actual_graph = self.upgrader.build_dependencies_graph(containers)
         expected_graph = {

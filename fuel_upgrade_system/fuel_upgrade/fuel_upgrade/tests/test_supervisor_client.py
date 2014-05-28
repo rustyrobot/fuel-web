@@ -14,13 +14,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import os
-
 import mock
 
-from fuel_upgrade import errors
-from fuel_upgrade.tests.base import BaseTestCase
 from fuel_upgrade.supervisor_client import SupervisorClient
+from fuel_upgrade.tests.base import BaseTestCase
 
 
 @mock.patch('fuel_upgrade.supervisor_client.os')
@@ -69,7 +66,8 @@ class TestSupervisorClient(BaseTestCase):
 
     def test_generate_config(self, _):
         config_path = '/config/path'
-        with mock.patch('fuel_upgrade.supervisor_client.os.path.join', return_value=config_path):
+        with mock.patch('fuel_upgrade.supervisor_client.os.path.join',
+                        return_value=config_path):
             self.supervisor.generate_config(
                 {'service_name': 'service_name1', 'command': 'command1'})
 
@@ -88,7 +86,8 @@ class TestSupervisorClient(BaseTestCase):
                 side_effect=paths):
 
             self.supervisor.generate_cobbler_config(
-                {'container_name': 'container_name1', 'service_name': 'service_name1'})
+                {'container_name': 'container_name1',
+                 'service_name': 'service_name1'})
 
         self.utils_mock.render_template_to_file.assert_called_once_with(
             paths[0],

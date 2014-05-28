@@ -14,12 +14,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import httplib
 import logging
 import os
 import socket
 import stat
 import xmlrpclib
-import httplib
 
 from xmlrpclib import Fault
 
@@ -45,8 +45,7 @@ class UnixSocketTransport(xmlrpclib.Transport, object):
     """
 
     def __init__(self, socket_path):
-        """
-        Create object
+        """Create object
 
         :params socket_path: path to the socket
         """

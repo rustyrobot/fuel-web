@@ -21,8 +21,8 @@ import traceback
 from fuel_upgrade.logger import configure_logger
 logger = configure_logger('/var/log/fuel_upgrade.log')
 
-from fuel_upgrade import errors
 from fuel_upgrade.config import build_config
+from fuel_upgrade import errors
 from fuel_upgrade.upgrade import DockerInitializer
 from fuel_upgrade.upgrade import DockerUpgrader
 from fuel_upgrade.upgrade import Upgrade

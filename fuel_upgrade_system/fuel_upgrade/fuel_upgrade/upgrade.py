@@ -30,6 +30,7 @@ from docker import Client
 
 from fuel_upgrade import errors
 from fuel_upgrade import utils
+
 from fuel_upgrade.supervisor_client import SupervisorClient
 
 

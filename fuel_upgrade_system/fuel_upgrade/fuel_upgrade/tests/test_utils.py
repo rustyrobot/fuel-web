@@ -22,11 +22,10 @@ from mock import patch
 
 from fuel_upgrade import errors
 from fuel_upgrade.tests.base import BaseTestCase
+from fuel_upgrade.utils import create_dir_if_not_exists
 from fuel_upgrade.utils import exec_cmd
 from fuel_upgrade.utils import get_request
 from fuel_upgrade.utils import topological_sorting
-from fuel_upgrade.utils import create_dir_if_not_exists
-from fuel_upgrade.utils import render_template_to_file
 from fuel_upgrade.utils import wait_for_true
 
 
