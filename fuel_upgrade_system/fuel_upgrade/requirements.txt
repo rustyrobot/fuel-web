@@ -6,11 +6,8 @@ Mako==0.9.1
 # because docker 0.10 changed their api
 # and now volumes_from should be passed
 # on containers starting stage.
-# The patch for docker-py wasn't merged
+# The patch for docker-py was merged but wasn't released
 # yet https://github.com/dotcloud/docker-py/pull/200
-# It's the reason why we moved 'docker-py==0.3.1'
-#
-# How to install it on the master node
-# easy_install pip
-# yum install git
-# -e git+https://github.com/rustyrobot/docker-py.git@fixed-volumes#egg=docker-py
+# It's the reason why we use dependencies from
+# custom branch
+git+https://github.com/rustyrobot/docker-py.git@fixed-volumes#egg=docker-py

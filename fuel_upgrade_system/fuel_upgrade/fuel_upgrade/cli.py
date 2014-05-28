@@ -53,6 +53,11 @@ def parse_args():
         action='store_true')
 
     parser.add_argument(
+        '--disable_checker',
+        help='disable before upgrade checker',
+        action='store_true')
+
+    parser.add_argument(
         '--docker_initialize',
         help='disable rollabck in case of errors',
         action='store_true')
@@ -73,7 +78,8 @@ def run_upgrade(args):
         args.src,
         config,
         engine,
-        disable_rollback=args.disable_rollback)
+        disable_rollback=args.disable_rollback,
+        disable_checker=args.disable_checker)
 
     upgrader.run()
 

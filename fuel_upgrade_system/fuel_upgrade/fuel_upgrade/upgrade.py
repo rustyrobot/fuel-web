@@ -62,14 +62,6 @@ class DockerUpgrader(object):
         self.new_release_images = self.make_new_release_images_list()
         self.new_release_containers = self.make_new_release_containers_list()
 
-    def backup(self):
-        """We don't need to backup containers
-        because we don't remove current version.
-        Also we keep database in the container
-        and we don't need to backup dabase easier.
-        """
-        pass
-
     def upgrade(self):
         """Method with upgarde logic
         """
@@ -99,14 +91,14 @@ class DockerUpgrader(object):
         * and create symlink to /etc/fuel/version.yaml
         """
         logger.info(u'Run post upgrade actions')
-        new_config = self.config.new_version.to_yaml()
         base_config_dir = '/etc/fuel/{0}'.format(
             self.config.new_version['VERSION']['release'])
         new_version_path = '{0}/version.yaml'.format(
             base_config_dir)
         utils.create_dir_if_not_exists(base_config_dir)
         with open(new_version_path, 'w') as f:
-            f.write(yaml.dump(new_config, default_flow_style=False))
+            f.write(yaml.dump(self.config.new_version,
+                              default_flow_style=False))
 
         if os.path.exists(self.config.current_fuel_version_path):
             os.remove(self.config.current_fuel_version_path)
@@ -541,7 +533,7 @@ class DockerUpgrader(object):
 
         return self.exec_with_retries(
             func_create,
-            docker.APIError,
+            docker.errors.APIError,
             "Can't set cookie",
             retries=3,
             interval=2)
@@ -705,9 +697,6 @@ class DockerInitializer(DockerUpgrader):
     def rollback(self):
         logger.warn(u"DockerInitializer doesn't support rollback")
 
-    def make_backup(self):
-        logger.warn(u"DockerInitializer doesn't support rollback")
-
 
 class Upgrade(object):
     """Upgrade logic
@@ -717,7 +706,8 @@ class Upgrade(object):
                  update_path,
                  config,
                  upgrade_engine,
-                 disable_rollback=False):
+                 disable_rollback=False,
+                 disable_checker=False):
 
         logger.debug(
             u'Create Upgrade object with update path "{0}", '
@@ -731,6 +721,7 @@ class Upgrade(object):
         self.update_path = update_path
         self.upgrade_engine = upgrade_engine
         self.disable_rollback = disable_rollback
+        self.disable_checker = disable_checker
 
     def run(self):
         self.before_upgrade()
@@ -750,8 +741,8 @@ class Upgrade(object):
 
     def before_upgrade(self):
         logger.debug('Run before upgrade actions')
-        self.check_upgrade_opportunity()
-        self.make_backup()
+        if not self.disable_checker:
+            self.check_upgrade_opportunity()
 
     def upgrade(self):
         logger.debug('Run upgrade')
@@ -760,10 +751,6 @@ class Upgrade(object):
     def after_upgrade_checks(self):
         logger.debug('Run after upgrade actions')
         self.check_health()
-
-    def make_backup(self):
-        logger.debug('Run system backup')
-        self.upgrade_engine.backup()
 
     def check_upgrade_opportunity(self):
         """Sends request to nailgun

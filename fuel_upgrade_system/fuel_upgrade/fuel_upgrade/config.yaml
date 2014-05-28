@@ -16,7 +16,7 @@ container_prefix: fuel-core-
 supervisor:
   configs_prefix: /etc/supervisord.d/
   current_configs_prefix: /etc/supervisord.d/current
-  endpoint: 'unix:///var/run/supervisor.sock'
+  endpoint: '/var/run/supervisor.sock'
   restart_timeout: 300
 
 endpoints:

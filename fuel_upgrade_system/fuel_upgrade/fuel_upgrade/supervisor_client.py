@@ -16,6 +16,7 @@
 
 import logging
 import os
+import socket
 import stat
 import xmlrpclib
 import httplib

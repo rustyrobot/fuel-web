@@ -37,9 +37,6 @@ class Config(object):
     def __getattr__(self, name):
         return self.config.get(name, None)
 
-    def to_yaml(self):
-        return yaml.dump(self.config, default_flow_style=False)
-
 
 def build_config():
     """Builds config
