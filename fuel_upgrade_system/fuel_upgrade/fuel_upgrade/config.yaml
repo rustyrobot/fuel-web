@@ -44,7 +44,6 @@ containers:
   - id: nailgun
     supervisor_config: True
     from_image: nailgun
-    post_build_command: "puppet apply -v /etc/puppet/modules/nailgun/examples/nailgun-only.pp"
     port_bindings:
       8001:
         - '0.0.0.0'
@@ -213,7 +212,6 @@ containers:
   - id: ostf
     supervisor_config: True
     from_image: ostf
-    post_build_command: 'puppet apply -v /etc/puppet/modules/nailgun/examples/ostf-only.pp'
     port_bindings:
       8777:
         - '0.0.0.0'
@@ -233,6 +231,7 @@ containers:
 
 
   - id: postgres
+    after_container_creation_command: 'psql -f /tmp/upgrade/pg_dump_all.sql postgres'
     supervisor_config: True
     from_image: postgres
     port_bindings:
@@ -246,12 +245,12 @@ containers:
       - volume_logs
       - volume_repos
       - volume_fuel_configs
+      - volume_upgrade_directory
 
 
   - id: volume_db
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /var/lib/pgsql
     binds:
@@ -263,7 +262,6 @@ containers:
   - id: volume_repos
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /var/www/nailgun
     binds:
@@ -275,7 +273,6 @@ containers:
   - id: volume_logs
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /var/log/docker-log
     binds:
@@ -287,7 +284,6 @@ containers:
   - id: volume_ssh_keys
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /root/.ssh
     binds:
@@ -299,7 +295,6 @@ containers:
   - id: volume_dump
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /dump
     binds:
@@ -311,7 +306,6 @@ containers:
   - id: volume_fuel_configs
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /etc/fuel
     binds:
@@ -322,10 +316,19 @@ containers:
   - id: volume_puppet_manifests
     supervisor_config: False
     from_image: busybox
-    post_build_command: 'true'
     volumes:
       - /etc/puppet
     binds:
       '/etc/puppet':
         bind: '/etc/puppet'
+        ro: True
+
+  - id: volume_upgrade_directory
+    supervisor_config: False
+    from_image: busybox
+    volumes:
+      - /tmp/upgrade
+    binds:
+      '/tmp/upgrade':
+        bind: '/var/lib/fuel_upgrade'
         ro: True
