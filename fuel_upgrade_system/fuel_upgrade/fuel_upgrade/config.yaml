@@ -20,10 +20,46 @@ supervisor:
   endpoint: '/var/run/supervisor.sock'
   restart_timeout: 300
 
+checker:
+  timeout: 99999
+  interval: 3
+
 endpoints:
-  nailgun:
+  nginx_nailgun:
     port: 8000
+    host: 0.0.0.0
+  nginx_repo:
+    port: 8080
+    host: 0.0.0.0
+  nailgun:
+    port: 8001
     host: 127.0.0.1
+  ostf:
+    port: 8777
+    host: 127.0.0.1
+  cobbler:
+    port: 80
+    host: 127.0.0.1
+  postgres:
+    port: 5432
+    host: 127.0.0.1
+  rsync:
+    port: 873
+    host: 127.0.0.1
+  rsyslog:
+    port: 514
+    host: 127.0.0.1
+  rabbitmq:
+    user: naily
+    password: naily
+    port: 15672
+    host: 127.0.0.1
+  rabbitmq_mcollective:
+    port: 15672
+    host: 127.0.0.1
+    user: mcollective
+    password: marionette
+
 
 images:
   - id: astute
@@ -231,7 +267,7 @@ containers:
 
 
   - id: postgres
-    after_container_creation_command: 'psql -f /tmp/upgrade/pg_dump_all.sql postgres'
+    after_container_creation_command: 'su postgres -c "psql -f /tmp/upgrade/5.1/pg_dump_all.sql postgres"'
     supervisor_config: True
     from_image: postgres
     port_bindings:
@@ -241,22 +277,10 @@ containers:
     ports:
       - 5432
     volumes_from:
-      - volume_db
       - volume_logs
       - volume_repos
       - volume_fuel_configs
       - volume_upgrade_directory
-
-
-  - id: volume_db
-    supervisor_config: False
-    from_image: busybox
-    volumes:
-      - /var/lib/pgsql
-    binds:
-      '/var/lib/pgsql':
-        bind: '/var/lib/pgsql'
-        ro: False
 
 
   - id: volume_repos
@@ -313,6 +337,7 @@ containers:
         bind: '/etc/fuel'
         ro: False
 
+
   - id: volume_puppet_manifests
     supervisor_config: False
     from_image: busybox
@@ -323,12 +348,13 @@ containers:
         bind: '/etc/puppet'
         ro: True
 
+
   - id: volume_upgrade_directory
     supervisor_config: False
     from_image: busybox
     volumes:
       - /tmp/upgrade
     binds:
-      '/tmp/upgrade':
-        bind: '/var/lib/fuel_upgrade'
+      '/var/lib/fuel_upgrade':
+        bind: '/tmp/upgrade'
         ro: True

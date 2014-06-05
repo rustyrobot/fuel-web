@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import subprocess
+import shutil
 import time
 import urllib2
 
@@ -72,7 +73,7 @@ def get_request(url):
     logger.debug('GET response from {0}, code {1}, data: {2}'.format(
         url, response_code, response_data))
 
-    return json.loads(response_data)
+    return json.loads(response_data), response_code
 
 
 def topological_sorting(dep_graph):
@@ -130,7 +131,7 @@ def render_template_to_file(src, dst, params):
         f.write(rendered_cfg)
 
 
-def wait_for_true(check, timeout=60):
+def wait_for_true(check, timeout=60, interval=0.5):
     """Execute command with retries
 
     :param check: callable object
@@ -149,7 +150,7 @@ def wait_for_true(check, timeout=60):
             raise errors.TimeoutError(
                 'Failed to execute '
                 'command with timeout {0}'.format(timeout))
-        time.sleep(0.5)
+        time.sleep(interval)
 
 
 def symlink(from_path, to_path):
@@ -165,3 +166,41 @@ def symlink(from_path, to_path):
     if os.path.exists(to_path):
         os.remove(to_path)
     os.symlink(from_path, to_path)
+
+
+def file_contains_lines(file_path, patterns):
+    """Checks if file contains lines
+    which described by patterns
+
+    :param file_path: path to file
+    :param patterns: list of compiled regexps
+    :returns: True if file matches all patterns
+              False if file doesn't match one or more patterns
+    """
+    logger.debug(
+        u'Check if file "{0}" matches to pattern "{1}"'.format(
+            file_path, patterns))
+
+    with open(file_path, 'r') as f:
+        for line in f:
+            for i, re in enumerate(patterns):
+                result = re.search(line)
+                if result:
+                    del patterns[i]
+
+    if patterns:
+        logger.warn('Cannot find lines {0} in file {1}'.format(
+            patterns, file_path))
+        return False
+
+    return True
+
+
+def copy(from_path, to_path):
+    """Copy file, override if exists
+
+    :param from_path: src path
+    :param to_path: dst path
+    """
+    logger.debug(u'Copy file from {0} to {1}'.format(from_path, to_path))
+    shutil.copy(from_path, to_path)

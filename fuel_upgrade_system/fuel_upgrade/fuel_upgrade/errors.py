@@ -43,3 +43,11 @@ class CannotFindContainerError(FuelUpgradeException):
 
 class TimeoutError(FuelUpgradeException):
     pass
+
+
+class DatabaseDumpError(FuelUpgradeException):
+    pass
+
+
+class UpgradeVerificationError(FuelUpgradeException):
+    pass
