@@ -67,6 +67,20 @@ class OpenStackUpgrader(UpgradeEngine):
         self._update_conf()
         self._reset_rollback_ids()
 
+    @property
+    def required_free_space(self):
+        """Required free space to run upgrade
+
+        * size of puppet manifests
+        * size of repositories
+
+        :returns: dict where key is path to directory
+                  and value is required free space
+        """
+        return {
+            '/var/www/nailgun': 3233,
+            '/etc/puppet': 10}
+
     def _update_conf(self):
         """Update some conf data:
 

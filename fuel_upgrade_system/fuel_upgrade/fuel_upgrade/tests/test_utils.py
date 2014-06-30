@@ -284,3 +284,33 @@ class TestUtils(BaseTestCase):
         path = '/path/to/file.json'
         with mock.patch('__builtin__.open', side_effect=IOError()):
             self.assertFalse(utils.check_file_is_valid_json(path))
+
+    def test_byte_to_megabyte(self):
+        self.assertEqual(utils.byte_to_megabyte(0), 0)
+        self.assertEqual(utils.byte_to_megabyte(1048576), 1)
+
+    def test_calculate_free_space(self):
+        dev_info = mock.Mock()
+        dev_info.f_bsize = 1048576
+        dev_info.f_bavail = 2
+        with mock.patch('fuel_upgrade.utils.os.statvfs',
+                        return_value=dev_info) as st_mock:
+            self.assertEqual(utils.calculate_free_space('/tmp/dir/file'), 2)
+
+        st_mock.assert_called_once_with('/tmp/dir')
+
+    @mock.patch('fuel_upgrade.utils.os.path.ismount',
+                side_effect=[False, False, True])
+    def test_find_mount_point(self, mock_ismount):
+        path = '/dir1/dir2/dir3/dir4'
+        self.assertEqual(utils.find_mount_point(path), '/dir1/dir2')
+        self.called_times(mock_ismount, 3)
+
+    @mock.patch('fuel_upgrade.utils.os.path.getsize', return_value=1)
+    @mock.patch('fuel_upgrade.utils.os.listdir',
+                return_value=['file1', 'file2'])
+    @mock.patch('fuel_upgrade.utils.os.path.isfile',
+                return_value=True)
+    def test_dir_size(self, mock_isfile, mock_listdir, mock_getsize):
+        path = '/path/dir'
+        self.assertEqual(utils.dir_size(path), 2)
