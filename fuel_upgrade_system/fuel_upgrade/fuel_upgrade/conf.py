@@ -84,48 +84,54 @@ def config(update_path):
     endpoints = {
         'nginx_nailgun': {
             'port': 8000,
-            'host': '0.0.0.0'
-        },
+            'host': '0.0.0.0'},
+
         'nginx_repo': {
             'port': 8080,
-            'host': '0.0.0.0'
-        },
+            'host': '0.0.0.0'},
+
         'nailgun': {
             'port': 8001,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'ostf': {
             'port': 8777,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'cobbler': {
             'port': 80,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'postgres': {
             'port': 5432,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'rsync': {
             'port': 873,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'rsyslog': {
             'port': 514,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'rabbitmq': {
             'user': 'naily',
             'password': 'naily',
             'port': 15672,
-            'host': '127.0.0.1'
-        },
+            'host': '127.0.0.1'},
+
         'rabbitmq_mcollective': {
             'port': 15672,
             'host': '127.0.0.1',
             'user': 'mcollective',
             'password': 'marionette'}}
 
+    # Here are described all images which will
+    # be loaded into the docker
+    # `id` from id we make path to image files
+    # `type`
+    #   * fuel - create name of image like fuel-core-5.0-postgres
+    #   * base - use name without prefix and postfix
     images = [
         {'id': 'astute', 'type': 'fuel'},
         {'id': 'cobbler', 'type': 'fuel'},
@@ -368,6 +374,9 @@ def config(update_path):
 
 
 
+    # This node contains settings of OpenStack upgrader. So please keep all
+    # related settings there. Please keep in mind that all paths are relative
+    # to source directory that's passed as a command line argument.
     openstack = {
         'releases': 'config/openstack.yaml',
         'puppets': {
