@@ -29,6 +29,23 @@ import yaml
 from os.path import join
 
 
+class Config(object):
+    """Config object, returns None if field doesn't exist
+    """
+
+    def __init__(self, path):
+        # NOTE(eli): initialize _config
+        # with __setattr__ to prevent maximum
+        # recursion depth exceeded error
+        super(Config, self).__setattr__('_config', read_yaml_config(path))
+
+    def __getattr__(self, name):
+        return self._config.get(name, None)
+
+    def __setattr__(self, name, value):
+        self._config[name] = value
+
+
 def read_yaml_config(path):
     return yaml.load(open(path, 'r'))
 
@@ -41,27 +58,34 @@ def get_version_from_config(path):
     return read_yaml_config(path)['VERSION']['release']
 
 
+def build_config(update_path):
+    return Config(config(update_path))
+
+
 def config(update_path):
     current_fuel_version_path = '/etc/fuel/version.yaml'
     new_version_yaml_path = join(update_path, 'config/version.yaml')
 
     current_version = get_version_from_config(current_fuel_version_path)
     new_version = get_version_from_config(new_version_yaml_path)
+    fuel_version_path = join('/etc/fuel', new_version, 'version.yaml')
 
     fuel_config_path = '/etc/fuel/'
-    current_fuel_astute_path = '/etc/fuel/astute.yaml'
-    fuel_version_path = join('/etc/fuel', new_version, 'version.yaml')
     working_directory = join('/var/lib/fuel_upgrade', new_version)
-    from_version_path = join(working_directory, 'version.yaml')
-    images_extension = 'tar'
     puppet_modules_dir = 'puppet_modules'
+
+    from_version_path = join(working_directory, 'version.yaml')
+
     cobbler_container_config_path = '/var/lib/cobbler/config'
     cobbler_config_path = join(working_directory, 'cobbler_configs')
     cobbler_config_files_for_verifier = join(
         cobbler_config_path, 'config/systems.d/*.json')
+
+    images_extension = 'tar'
     image_prefix = 'fuel/'
     container_prefix = 'fuel-core-'
 
+    current_fuel_astute_path = '/etc/fuel/astute.yaml'
     astute = read_yaml_config(current_fuel_astute_path)
 
     docker = {
@@ -397,6 +421,8 @@ def config(update_path):
                 'src': 'repos/ubuntu',
                 'dst': join('/var/www/nailgun', new_version, 'ubuntu')}}}
 
+
+    # Config for host system upgarde engine
     host_system = {
         'manifest_path': join(
             update_path, 'puppet/modules/nailgun/examples/host-only.pp'),
@@ -404,5 +430,12 @@ def config(update_path):
         'repo_config_path': join(
             '/etc/yum.repos.d', new_version, '_nailgun.repo'),
         'repo_path': join(update_path, 'repos/centos/x86_64')}
+
+
+    # Config for bootstrap upgrade
+    bootstrap = {
+        'src': join(update_path, 'bootstrap/'),
+        'dst': '/var/www/nailgun/bootstrap/'}
+
 
     return locals()
