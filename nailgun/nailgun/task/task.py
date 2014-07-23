@@ -54,6 +54,7 @@ def make_astute_message(method, respond_to, args):
 
 def fake_cast(queue, messages, **kwargs):
     def make_thread(message, join_to=None):
+        print "#### making thread", message['method']
         thread = FAKE_THREADS[message['method']](
             data=message,
             params=kwargs,
@@ -113,6 +114,7 @@ class DeploymentTask(object):
 
     @classmethod
     def message(cls, task, nodes):
+        print "### deployment task message", task, nodes
         logger.debug("DeploymentTask.message(task=%s)" % task.uuid)
 
         nodes_ids = [n.id for n in nodes]
@@ -131,7 +133,7 @@ class DeploymentTask(object):
                     n.status = 'provisioned'
                 n.progress = 0
                 db().add(n)
-                db().commit()
+        db().flush()
 
         # here we replace deployment data if user redefined them
         serialized_cluster = task.cluster.replaced_deployment_info or \
@@ -188,8 +190,15 @@ class ProvisionTask(object):
 
     @classmethod
     def message(cls, task, nodes_to_provisioning):
+        print "### ProvisionTask message called", task
         logger.debug("ProvisionTask.message(task=%s)" % task.uuid)
-
+        task = objects.Task.get_by_uid(
+            task.id,
+            fail_if_not_found=True,
+            lock_for_update=True
+        )
+        print "### ProvisionTask, task", task
+        objects.NodeCollection.lock_nodes(nodes_to_provisioning)
         serialized_cluster = task.cluster.replaced_provisioning_info or \
             provisioning_serializers.serialize(
                 task.cluster, nodes_to_provisioning)
@@ -203,6 +212,7 @@ class ProvisionTask(object):
             ).get_admin_network_group_id()
 
             TaskHelper.prepare_syslog_dir(node, admin_net_id)
+        db().commit()
 
         return make_astute_message(
             'provision',
@@ -217,12 +227,11 @@ class ProvisionTask(object):
 class DeletionTask(object):
 
     @classmethod
-    def execute(self, task, respond_to='remove_nodes_resp'):
+    def execute(cls, task, respond_to='remove_nodes_resp'):
         logger.debug("DeletionTask.execute(task=%s)" % task.uuid)
         task_uuid = task.uuid
         logger.debug("Nodes deletion task is running")
         nodes_to_delete = []
-        nodes_to_delete_constant = []
         nodes_to_restore = []
 
         USE_FAKE = settings.FAKE_TASKS or settings.FAKE_TASKS_AMQP
@@ -230,6 +239,7 @@ class DeletionTask(object):
         # no need to call astute if there are no nodes in cluster
         if respond_to == 'remove_cluster_resp' and \
                 not list(task.cluster.nodes):
+            print "#### DeletionTask removing cluster"
             rcvr = rpc.receiver.NailgunReceiver()
             rcvr.remove_cluster_resp(
                 task_uuid=task_uuid,
@@ -238,6 +248,7 @@ class DeletionTask(object):
             )
             return
 
+        print "#### DeletionTask removing nodes"
         for node in task.cluster.nodes:
             if node.pending_deletion:
                 nodes_to_delete.append({
@@ -265,9 +276,11 @@ class DeletionTask(object):
                     nodes_to_restore.append(new_node)
                     # /only fake tasks
 
+        print "### DeletionTask nodes to restore", nodes_to_restore
         # check if there's a zabbix server in an environment
         # and if there is, remove hosts
         if ZabbixManager.get_zabbix_node(task.cluster):
+            print "#### DeletionTask processing zabbix node"
             zabbix_credentials = ZabbixManager.get_zabbix_credentials(
                 task.cluster
             )
@@ -283,21 +296,39 @@ class DeletionTask(object):
         # this variable is used to iterate over it
         # and be able to delete node from nodes_to_delete safely
         nodes_to_delete_constant = list(nodes_to_delete)
+        print "### DeletionTask nodes_to_delete", len(nodes_to_delete), nodes_to_delete
+
+        # locking nodes
+        nodes_ids = [node['id'] for node in nodes_to_delete_constant]
+        nodes_db = objects.NodeCollection.filter_by_list(
+            None,
+            'id',
+            nodes_ids,
+            order_by='id'
+        )
+        objects.NodeCollection.lock_for_update(nodes_db).all()
 
         for node in nodes_to_delete_constant:
-            node_db = db().query(Node).get(node['id'])
+            print "### DeletionTask deleting node", node
+            node_db = objects.Node.get_by_uid(node['id'], lock_for_update=True)
+            print "### DeletionTask deleting node_db", node_db
 
             slave_name = objects.Node.make_slave_name(node_db)
             logger.debug("Removing node from database and pending it "
                          "to clean its MBR: %s", slave_name)
+            print "### DeletionTask processing", node_db.id, node_db.status, node_db.name
             if node_db.status == 'discover':
+                print "### DeletionTask deleting node_db", node_db.id, node_db.status, node_db.name
                 logger.info(
                     "Node is not deployed yet,"
                     " can't clean MBR: %s", slave_name)
                 db().delete(node_db)
-                db().commit()
-
+                db().flush()
+                print "### DeletionTask is nod in nodes_to_delete", (node in nodes_to_delete)
                 nodes_to_delete.remove(node)
+
+        print "### DeletionTask Resulting nodes to delete", len(nodes_to_delete), nodes_to_delete
+        db().commit()
 
         msg_delete = make_astute_message(
             'remove_nodes',
@@ -518,7 +549,7 @@ class CheckNetworksTask(object):
             warn_msgs = checker.check_interface_mapping()
             if warn_msgs:
                 task.result = {"warning": warn_msgs}
-                db().commit()
+        db().commit()
 
 
 class CheckBeforeDeploymentTask(object):
@@ -756,7 +787,7 @@ class GenerateCapacityLogTask(object):
         capacity_log = CapacityLog()
         capacity_log.report = capacity_data
         db().add(capacity_log)
-        db().commit()
+        db().flush()
 
         task.result = {'log_id': capacity_log.id}
         task.status = 'ready'

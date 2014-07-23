@@ -15,6 +15,7 @@
 #    under the License.
 
 import traceback
+import itertools
 
 from nailgun.objects.serializers.network_configuration \
     import NeutronNetworkConfigurationSerializer
@@ -23,6 +24,8 @@ from nailgun.objects.serializers.network_configuration \
 
 from nailgun.consts import TASK_NAMES
 from nailgun.consts import TASK_STATUSES
+from nailgun.consts import NODE_STATUSES
+from nailgun.consts import CLUSTER_STATUSES
 from nailgun.db import db
 from nailgun.db.sqlalchemy.models import Cluster
 from nailgun.db.sqlalchemy.models import Task
@@ -43,7 +46,8 @@ class TaskManager(object):
 
     def _call_silently(self, task, instance, *args, **kwargs):
         method = getattr(instance, kwargs.pop('method_name', 'execute'))
-        if task.status == 'error':
+        print "### _call_silently called", task, instance
+        if task.status == TASK_STATUSES.error:
             return
         try:
             return method(task, *args, **kwargs)
@@ -80,6 +84,42 @@ class TaskManager(object):
 
 class ApplyChangesTaskManager(TaskManager):
 
+    def _lock_required_tasks(self):
+        names = (
+            TASK_NAMES.deploy,
+            TASK_NAMES.stop_deployment,
+            TASK_NAMES.reset_environment
+        )
+        return objects.TaskCollection.lock_cluster_tasks(
+            cluster_id=self.cluster.id, names=names
+        )
+
+    def _remove_obsolete_tasks(self):
+        locked_tasks = self._lock_required_tasks()
+        current_tasks = objects.TaskCollection.filter_by(
+            locked_tasks,
+            name=TASK_NAMES.deploy
+        )
+        print "### current tasks", current_tasks
+        for task in current_tasks:
+            if task.status == TASK_STATUSES.running:
+                db().commit()
+                raise errors.DeploymentAlreadyStarted()
+            elif task.status in (TASK_STATUSES.ready, TASK_STATUSES.error):
+                db().delete(task)
+        db().flush()
+
+        obsolete_tasks = objects.TaskCollection.filter_by_list(
+            locked_tasks,
+            'name',
+            (TASK_NAMES.stop_deployment, TASK_NAMES.reset_environment)
+        )
+        print "### obsolete tasks", obsolete_tasks
+        for task in obsolete_tasks:
+            print "### removing obsolete task", task
+            db().delete(task)
+        db().commit()
+
     def execute(self):
         logger.info(
             u"Trying to start deployment at cluster '{0}'".format(
@@ -94,78 +134,68 @@ class ApplyChangesTaskManager(TaskManager):
             )
         )
 
-        # locking tasks on cluster
-        names = (
-            TASK_NAMES.deploy,
-            TASK_NAMES.stop_deployment,
-            TASK_NAMES.reset_environment
-        )
-        objects.TaskCollection.lock_cluster_tasks(
-            cluster_id=self.cluster.id, names=names
-        ).all()
+        self._remove_obsolete_tasks()
 
-        # filtering current deploy tasks
-        current_tasks = objects.TaskCollection.filter_by(
-            None,
-            cluster_id=self.cluster.id,
-            name=TASK_NAMES.deploy
-        )
-
-        for task in current_tasks:
-            if task.status == TASK_STATUSES.running:
-                db().rollback()
-                raise errors.DeploymentAlreadyStarted()
-            elif task.status in (TASK_STATUSES.ready, TASK_STATUSES.error):
-                db().delete(task)
-        db().flush()
-
-        obsolete_tasks = objects.TaskCollection.lock_cluster_tasks(
-            self.cluster.id,
-            names=(TASK_NAMES.stop_deployment, TASK_NAMES.reset_environment)
-        ).all()
-
-        for task in obsolete_tasks:
-            db().delete(task)
+        print "#### creating supertask deploy"
+        supertask = Task(name=TASK_NAMES.deploy, cluster=self.cluster)
+        db().add(supertask)
+        # we should have task committed for processing in other threads
         db().commit()
+        # print "#### supertask created and committed", supertask
+
+        print "### locking tasks"
+        # locking tasks on cluster
+        # self._lock_required_tasks()
+        print "### locking cluster"
+        # locking cluster
+        # objects.Cluster.get_by_uid(self.cluster.id, fail_if_not_found=True, lock_for_update=True)
+        print "### locking nodes"
+        # locking nodes
+        nodes_to_delete = TaskHelper.nodes_to_delete(self.cluster)
+        print "### initial nodes_to_delete", nodes_to_delete
+        nodes_to_deploy = TaskHelper.nodes_to_deploy(self.cluster)
+        print "### initial nodes_to_deploy", nodes_to_deploy
+        nodes_to_provision = TaskHelper.nodes_to_provision(self.cluster)
+        print "### initial nodes_to_provision", nodes_to_provision
+        # nodes_to_process = list(itertools.chain(nodes_to_delete, nodes_to_deploy, nodes_to_provision))
+        # objects.NodeCollection.lock_nodes(nodes_to_process)
 
         task_messages = []
-
-        nodes_to_delete = TaskHelper.nodes_to_delete(self.cluster)
-        nodes_to_deploy = TaskHelper.nodes_to_deploy(self.cluster)
-        nodes_to_provision = TaskHelper.nodes_to_provision(self.cluster)
-
         if not any([nodes_to_provision, nodes_to_deploy, nodes_to_delete]):
+            db().rollback()
             raise errors.WrongNodeStatus("No changes to deploy")
-
-        supertask = Task(name='deploy', cluster=self.cluster)
-        db().add(supertask)
-        db().commit()
 
         # Run validation if user didn't redefine
         # provisioning and deployment information
         if not self.cluster.replaced_provisioning_info and \
                 not self.cluster.replaced_deployment_info:
             try:
+                print "#### checking supertask before deployment"
                 self.check_before_deployment(supertask)
             except errors.CheckBeforeDeploymentError:
+                db().commit()
                 return supertask
 
         task_deletion, task_provision, task_deployment = None, None, None
 
+        print "#### processing nodes to delete", nodes_to_delete
         if nodes_to_delete:
-            # locking nodes before deleting
-            objects.NodeCollection.lock_nodes(nodes_to_delete)
             # For more accurate progress calculation
             task_weight = 0.4
             task_deletion = supertask.create_subtask(TASK_NAMES.node_deletion,
                                                      weight=task_weight)
             logger.debug("Launching deletion task: %s", task_deletion.uuid)
+            # we should have task committed for processing in other threads
+            db().commit()
+            print "#### deletion subtask before _call_silently", task_deletion.id, task_deletion.status, task_deletion.progress
             self._call_silently(task_deletion, tasks.DeletionTask)
+            print "#### deletion subtask after _call_silently", task_deletion.id, task_deletion.status, task_deletion.progress
 
+        print "#### processing nodes to provision", nodes_to_provision
         if nodes_to_provision:
-            # locking nodes before updating
-            objects.NodeCollection.lock_nodes(nodes_to_provision)
             # updating nodes
+            print "#### processing nodes to provision", nodes_to_provision
+            nodes_to_provision = objects.NodeCollection.lock_nodes(nodes_to_provision)
             objects.NodeCollection.update_slave_nodes_fqdn(nodes_to_provision)
             logger.debug("There are nodes to provision: %s",
                          " ".join([n.fqdn for n in nodes_to_provision]))
@@ -174,28 +204,29 @@ class ApplyChangesTaskManager(TaskManager):
             task_weight = 0.4
             task_provision = supertask.create_subtask(TASK_NAMES.provision,
                                                       weight=task_weight)
+            db().commit()
             provision_message = self._call_silently(
                 task_provision,
                 tasks.ProvisionTask,
                 nodes_to_provision,
                 method_name='message'
             )
-            db().refresh(task_provision)
-
-            # if failed to generate task message for orchestrator
-            # then task is already set to error
-            if task_provision.status == TASK_STATUSES.error:
-                return supertask
 
             task_provision = objects.Task.get_by_uid(
                 task_provision.id,
                 fail_if_not_found=True,
                 lock_for_update=True
             )
+            # if failed to generate task message for orchestrator
+            # then task is already set to error
+            if task_provision.status == TASK_STATUSES.error:
+                return supertask
+
             task_provision.cache = provision_message
             db().commit()
             task_messages.append(provision_message)
 
+        print "#### processing nodes to deploy", nodes_to_deploy
         if nodes_to_deploy:
             # locking nodes before updating
             objects.NodeCollection.lock_nodes(nodes_to_deploy)
@@ -203,7 +234,9 @@ class ApplyChangesTaskManager(TaskManager):
             objects.NodeCollection.update_slave_nodes_fqdn(nodes_to_deploy)
             logger.debug("There are nodes to deploy: %s",
                          " ".join([n.fqdn for n in nodes_to_deploy]))
-            task_deployment = supertask.create_subtask("deployment")
+            task_deployment = supertask.create_subtask(TASK_NAMES.deployment)
+            # we should have task committed for processing in other threads
+            db().commit()
             deployment_message = self._call_silently(
                 task_deployment,
                 tasks.DeploymentTask,
@@ -211,30 +244,33 @@ class ApplyChangesTaskManager(TaskManager):
                 method_name='message'
             )
 
-            # if failed to generate task message for orchestrator
-            # then task is already set to error
-            if task_deployment.status == TASK_STATUSES.error:
-                return supertask
-
             task_deployment = objects.Task.get_by_uid(
                 task_deployment.id,
                 fail_if_not_found=True,
                 lock_for_update=True
             )
+            # if failed to generate task message for orchestrator
+            # then task is already set to error
+            if task_deployment.status == TASK_STATUSES.error:
+                return supertask
+
             task_deployment.cache = deployment_message
             db().commit()
             task_messages.append(deployment_message)
 
         if nodes_to_provision:
-            objects.NodeCollection.lock_nodes(nodes_to_provision)
+            nodes_to_provision = objects.NodeCollection.lock_nodes(nodes_to_provision)
             for node in nodes_to_provision:
-                node.status = 'provisioning'
+                node.status = NODE_STATUSES.provisioning
             db().commit()
 
-        self.cluster.status = 'deployment'
+        db().execute("SELECT '#### MARKER {0}'".format("ApplyChangesTaskManager setting status deployment to cluster"))
+        objects.Cluster.get_by_uid(self.cluster.id, fail_if_not_found=True, lock_for_update=True)
+        self.cluster.status = CLUSTER_STATUSES.deployment
         db().add(self.cluster)
         db().commit()
 
+        print "### rpc cast with messages", task_messages
         if task_messages:
             rpc.cast('naily', task_messages)
 
@@ -244,6 +280,7 @@ class ApplyChangesTaskManager(TaskManager):
                 supertask.uuid
             )
         )
+        print "#### returning supertask", supertask
         return supertask
 
     def check_before_deployment(self, supertask):
@@ -253,33 +290,32 @@ class ApplyChangesTaskManager(TaskManager):
             n for n in network_info["networks"] if n["name"] != "fuelweb_admin"
         ]
 
-        check_networks = supertask.create_subtask('check_networks')
+        check_networks = supertask.create_subtask(TASK_NAMES.check_networks)
         self._call_silently(
             check_networks,
             tasks.CheckNetworksTask,
             data=network_info,
             check_admin_untagged=True
         )
-        db().refresh(check_networks)
-        if check_networks.status == 'error':
+        if check_networks.status == TASK_STATUSES.error:
             logger.warning(
                 "Checking networks failed: %s", check_networks.message
             )
             raise errors.CheckBeforeDeploymentError(check_networks.message)
         db().delete(check_networks)
-        db().commit()
+        db().refresh(supertask)
+        db().flush()
 
         # checking prerequisites
-        check_before = supertask.create_subtask('check_before_deployment')
+        check_before = supertask.create_subtask(TASK_NAMES.check_before_deployment)
         logger.debug("Checking prerequisites task: %s", check_before.uuid)
         self._call_silently(
             check_before,
             tasks.CheckBeforeDeploymentTask
         )
-        db().refresh(check_before)
         # if failed to check prerequisites
         # then task is already set to error
-        if check_before.status == 'error':
+        if check_before.status == TASK_STATUSES.error:
             logger.warning(
                 "Checking prerequisites failed: %s", check_before.message
             )
@@ -288,7 +324,8 @@ class ApplyChangesTaskManager(TaskManager):
             "Checking prerequisites is successful, starting deployment..."
         )
         db().delete(check_before)
-        db().commit()
+        db().refresh(supertask)
+        db().flush()
 
 
 class ProvisioningTaskManager(TaskManager):
@@ -312,6 +349,7 @@ class ProvisioningTaskManager(TaskManager):
 
         task_provision = Task(name='provision', cluster=self.cluster)
         db().add(task_provision)
+        db().commit()
 
         provision_message = self._call_silently(
             task_provision,
@@ -319,13 +357,18 @@ class ProvisioningTaskManager(TaskManager):
             nodes_to_provision,
             method_name='message'
         )
-        db().refresh(task_provision)
 
+        task_provision = objects.Task.get_by_uid(
+            task_provision.id,
+            fail_if_not_found=True,
+            lock_for_update=True
+        )
         task_provision.cache = provision_message
+        objects.NodeCollection.lock_for_update(nodes).all()
 
         for node in nodes_to_provision:
             node.pending_addition = False
-            node.status = 'provisioning'
+            node.status = NODE_STATUSES.provisioning
             node.progress = 0
 
         db().commit()
@@ -338,16 +381,8 @@ class ProvisioningTaskManager(TaskManager):
 class DeploymentTaskManager(TaskManager):
 
     def execute(self, nodes_to_deployment):
-
-        nodes_ids = [node.id for node in nodes_to_deployment]
-        nodes = objects.NodeCollection.filter_by_list(
-            None,
-            'id',
-            nodes_ids,
-            order_by='id'
-        )
-        objects.NodeCollection.lock_for_update(nodes).all()
-
+        # locking nodes for update
+        objects.NodeCollection.lock_nodes(nodes_to_deployment)
         objects.NodeCollection.update_slave_nodes_fqdn(nodes_to_deployment)
 
         logger.debug('Nodes to deploy: {0}'.format(
@@ -362,6 +397,15 @@ class DeploymentTaskManager(TaskManager):
             method_name='message')
 
         db().refresh(task_deployment)
+
+        # locking task
+        task_deployment = objects.Task.get_by_uid(
+            task_deployment.id,
+            fail_if_not_found=True,
+            lock_for_update=True
+        )
+        # locking nodes
+        objects.NodeCollection.lock_nodes(nodes_to_deployment)
 
         task_deployment.cache = deployment_message
 
@@ -388,7 +432,7 @@ class StopDeploymentTaskManager(TaskManager):
         objects.TaskCollection.lock_cluster_tasks(
             self.cluster.id,
             names=names
-        ).all()
+        )
 
         stop_running = objects.TaskCollection.filter_by(
             None,
@@ -552,16 +596,20 @@ class UpdateEnvironmentTaskManager(TaskManager):
 class CheckNetworksTaskManager(TaskManager):
 
     def execute(self, data, check_admin_untagged=False):
-        check_networks = db().query(Task).filter_by(
-            cluster=self.cluster,
-            name="check_networks"
-        ).first()
+        print "### CheckNetworksTaskManager.execute called"
+        locked_tasks = objects.TaskCollection.filter_by(
+            None,
+            cluster_id=self.cluster.id,
+            name=TASK_NAMES.check_networks
+        )
+        locked_tasks = objects.TaskCollection.order_by(locked_tasks, 'id')
+        check_networks = objects.TaskCollection.lock_for_update(locked_tasks).first()
         if check_networks:
             db().delete(check_networks)
-            db().commit()
+            db().flush()
 
         task = Task(
-            name="check_networks",
+            name=TASK_NAMES.check_networks,
             cluster=self.cluster
         )
         db().add(task)
@@ -572,39 +620,59 @@ class CheckNetworksTaskManager(TaskManager):
             data,
             check_admin_untagged
         )
-        db().refresh(task)
-        if task.status == 'running':
+
+        task = objects.Task.get_by_uid(task.id, fail_if_not_found=True, lock_for_update=True)
+        if task.status == TASK_STATUSES.running:
             # update task status with given data
-            data = {'status': 'ready', 'progress': 100}
+            data = {'status': TASK_STATUSES.ready, 'progress': 100}
             objects.Task.update(task, data)
+        db().commit()
         return task
 
 
 class VerifyNetworksTaskManager(TaskManager):
 
     def remove_previous_task(self):
-        check_networks = db().query(Task).filter_by(
-            cluster=self.cluster,
-            name="check_networks"
-        ).first()
-        if check_networks:
-            db().delete(check_networks)
-            db().commit()
+        locked_tasks = objects.TaskCollection.filter_by(
+            None,
+            cluster_id=self.cluster.id
+        )
+        locked_tasks = objects.TaskCollection.filter_by_list(
+            locked_tasks,
+            'name',
+            (TASK_NAMES.check_networks, TASK_NAMES.verify_networks),
+            order_by='id'
+        )
+        locked_tasks = objects.TaskCollection.lock_for_update(locked_tasks).all()
+        print "#### locked tasks", locked_tasks
 
-        verification_tasks = db().query(Task).filter_by(
-            cluster=self.cluster,
-            name="verify_networks"
-        ).all()
+        check_networks = objects.TaskCollection.filter_by(
+            locked_tasks,
+            name=TASK_NAMES.check_networks
+        )
+        check_networks = list(check_networks)
+
+        if check_networks:
+            db().delete(check_networks[0])
+            db().flush()
+
+        verification_tasks = objects.TaskCollection.filter_by(
+            locked_tasks,
+            name=TASK_NAMES.verify_networks
+        )
+        verification_tasks = list(verification_tasks)
+
         if verification_tasks:
             ver_task = verification_tasks[0]
-            if ver_task.status == "running":
+            if ver_task.status == TASK_STATUSES.running:
                 raise errors.CantRemoveOldVerificationTask()
             for subtask in ver_task.subtasks:
                 db().delete(subtask)
             db().delete(ver_task)
-            db().commit()
+            db().flush()
 
     def execute(self, nets, vlan_ids):
+        print "### VerifyNetworksTaskManager.execute called"
         self.remove_previous_task()
 
         task = Task(
@@ -655,6 +723,7 @@ class VerifyNetworksTaskManager(TaskManager):
             verify_task.add_subtask(
                 tasks.MulticastVerificationTask(multicast, conf))
 
+            db().commit()
             self._call_silently(task, verify_task)
 
         return task
@@ -663,14 +732,40 @@ class VerifyNetworksTaskManager(TaskManager):
 class ClusterDeletionManager(TaskManager):
 
     def execute(self):
-        current_cluster_tasks = db().query(Task).filter_by(
-            cluster=self.cluster,
-            name='cluster_deletion'
-        ).all()
-        deploy_running = db().query(Task).filter_by(
-            cluster=self.cluster,
-            name='deploy',
-            status='running'
+        # locking required tasks
+        locked_tasks = objects.TaskCollection.lock_cluster_tasks(
+            self.cluster.id
+        )
+        db().execute("SELECT '#### MARKER {0}'".format("ClusterDeletionManager for setting status remove"))
+        # locking cluster
+        objects.Cluster.get_by_uid(
+            self.cluster.id,
+            fail_if_not_found=True,
+            lock_for_update=True
+        )
+        # locking nodes
+        nodes = objects.NodeCollection.filter_by(
+            None,
+            cluster_id=self.cluster.id
+        )
+        nodes = objects.NodeCollection.order_by(nodes, 'id')
+        objects.NodeCollection.lock_for_update(nodes).all()
+
+        current_cluster_tasks = objects.TaskCollection.filter_by_list(
+            locked_tasks,
+            'name',
+            (TASK_NAMES.cluster_deletion,)
+        )
+
+        deploy_running = objects.TaskCollection.filter_by(
+            None,
+            cluster_id=self.cluster.id,
+            name=TASK_NAMES.deploy,
+            status=TASK_STATUSES.running
+        )
+        deploy_running = objects.TaskCollection.order_by(
+            deploy_running,
+            'id'
         ).first()
         if deploy_running:
             logger.error(
@@ -682,28 +777,29 @@ class ClusterDeletionManager(TaskManager):
 
         logger.debug("Removing cluster tasks")
         for task in current_cluster_tasks:
-            if task.status == "running":
+            if task.status == TASK_STATUSES.running:
+                db().rollback()
                 raise errors.DeletionAlreadyStarted()
-            elif task.status in ("ready", "error"):
+            elif task.status in (TASK_STATUSES.ready, TASK_STATUSES.error):
                 for subtask in task.subtasks:
                     db().delete(subtask)
                 db().delete(task)
-                db().commit()
+        db().flush()
 
         logger.debug("Labeling cluster nodes to delete")
         for node in self.cluster.nodes:
             node.pending_deletion = True
             db().add(node)
-            db().commit()
+        db().flush()
 
-        self.cluster.status = 'remove'
+        self.cluster.status = CLUSTER_STATUSES.remove
         db().add(self.cluster)
-        db().commit()
 
         logger.debug("Creating cluster deletion task")
         task = Task(name="cluster_deletion", cluster=self.cluster)
         db().add(task)
         db().commit()
+
         self._call_silently(
             task,
             tasks.ClusterDeletionTask

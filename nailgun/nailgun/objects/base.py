@@ -195,9 +195,12 @@ class NailgunCollection(object):
         :param yield_per: SQLAlchemy's yield_per() clause
         :returns: iterable (SQLAlchemy query)
         """
+        # return db().query(
+        #     cls.single.model
+        # ).yield_per(yield_per)
         return db().query(
             cls.single.model
-        ).yield_per(yield_per)
+        )
 
     @classmethod
     def _query_order_by(cls, query, order_by):
@@ -271,7 +274,7 @@ class NailgunCollection(object):
         :returns: filtered iterable (SQLAlchemy query)
         """
         map(cls.single.check_field, kwargs.iterkeys())
-        use_iterable = iterable or cls.all(yield_per=yield_per)
+        use_iterable = iterable if iterable is not None else cls.all(yield_per=yield_per)
         if cls._is_query(use_iterable):
             return use_iterable.filter_by(**kwargs)
         elif cls._is_iterable(use_iterable):

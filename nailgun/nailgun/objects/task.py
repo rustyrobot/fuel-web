@@ -66,6 +66,7 @@ class Task(NailgunObject):
 
     @classmethod
     def create_subtask(cls, instance, name):
+        print "#### NailgunObject.Task.create_subtask"
         if name not in consts.TASK_NAMES:
             raise errors.InvalidData(
                 "Invalid subtask name"
@@ -288,4 +289,4 @@ class TaskCollection(NailgunCollection):
             query = cls.filter_by_list(query, 'name', names)
         query = cls.order_by(query, 'id')
         query = cls.lock_for_update(query)
-        return query
+        return query.all()

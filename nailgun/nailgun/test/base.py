@@ -627,6 +627,7 @@ class Environment(object):
     def _wait_task(self, task, timeout, message):
         timer = time.time()
         while task.status == 'running':
+            print "#### task status", task.name, task.status
             self.db.refresh(task)
             if time.time() - timer > timeout:
                 raise Exception(
@@ -635,6 +636,7 @@ class Environment(object):
                     )
                 )
             time.sleep(1)
+        print "#### task status on exit", task.name, task.status
         self.tester.assertEqual(task.progress, 100)
         if isinstance(message, type(re.compile("regexp"))):
             self.tester.assertIsNotNone(re.match(message, task.message))

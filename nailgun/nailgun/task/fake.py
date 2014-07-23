@@ -202,9 +202,12 @@ class FakeAmpqThread(FakeThread):
             resp_method = getattr(receiver, self.respond_to)
             for msg in self.message_gen():
                 try:
-                    resp_method(**msg)
+                    print "### calling", self.__class__.__name__, resp_method
+                    resp = resp_method(**msg)
+                    print "### method resp", resp
                     db().commit()
                 except Exception as e:
+                    print "### method resp failed", e
                     db().rollback()
                     raise e
 
@@ -332,6 +335,7 @@ class FakeDeploymentThread(FakeAmpqThread):
 
 class FakeProvisionThread(FakeThread):
     def run(self):
+        print "### running FakeProvisionThread"
         super(FakeProvisionThread, self).run()
         receiver = NailgunReceiver
 
@@ -347,15 +351,18 @@ class FakeProvisionThread(FakeThread):
 
         resp_method = getattr(receiver, self.respond_to)
         try:
-            resp_method(**kwargs)
+            resp = resp_method(**kwargs)
+            print "### FakeProvisionThread resp_method", resp
             db().commit()
         except Exception as e:
+            print "### FakeProvisionThread resp_method failed:", e
             db().rollback()
             raise e
 
 
 class FakeDeletionThread(FakeThread):
     def run(self):
+        print "### in FakeDeletionThread.run"
         super(FakeDeletionThread, self).run()
         receiver = NailgunReceiver
         kwargs = {
@@ -366,18 +373,22 @@ class FakeDeletionThread(FakeThread):
         nodes_to_restore = self.data['args'].get('nodes_to_restore', [])
         resp_method = getattr(receiver, self.respond_to)
         try:
+            print "### calling", resp_method
             resp_method(**kwargs)
             db().commit()
         except Exception as e:
+            print "### calling failed", resp_method, e
             db().rollback()
             raise e
 
+        print "### recovering nodes"
         recover_nodes = self.params.get("recover_nodes", True)
 
         if not recover_nodes:
             db().commit()
             return
 
+        print "### restoring nodes"
         for node_data in nodes_to_restore:
             # Offline node just deleted from db
             # and could not recreated with status
@@ -387,6 +398,7 @@ class FakeDeletionThread(FakeThread):
 
             node_data["status"] = "discover"
             objects.Node.create(node_data)
+        print "#### exiting FakeDeletionThread.run"
         db().commit()
 
 

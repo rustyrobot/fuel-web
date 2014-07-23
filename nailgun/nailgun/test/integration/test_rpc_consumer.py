@@ -850,10 +850,9 @@ class TestConsumer(BaseIntegrationTest):
         )
 
         self.db.add(supertask)
-        self.db.commit()
-
         task_deletion = supertask.create_subtask("node_deletion")
         task_provision = supertask.create_subtask("provision", weight=0.4)
+        self.db.commit()
 
         subtask_progress = random.randint(1, 20)
 

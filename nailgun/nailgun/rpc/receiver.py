@@ -41,6 +41,7 @@ class NailgunReceiver(object):
 
     @classmethod
     def remove_nodes_resp(cls, **kwargs):
+        print "### remove_nodes_resp params", kwargs
         logger.info(
             "RPC method remove_nodes_resp received: %s" %
             jsonutils.dumps(kwargs)
@@ -72,19 +73,21 @@ class NailgunReceiver(object):
 
         # locking nodes
         all_nodes = itertools.chain(nodes, error_nodes, inaccessible_nodes)
-        nodes_ids = [
+        all_nodes_ids = [
             node['id'] if 'id' in node else node['uid']
             for node in all_nodes
         ]
-        nodes = objects.NodeCollection.filter_by_list(
+        locked_nodes = objects.NodeCollection.filter_by_list(
             None,
             'id',
-            nodes_ids,
+            all_nodes_ids,
             order_by='id'
         )
-        nodes = objects.NodeCollection.lock_for_update(nodes).all()
+        objects.NodeCollection.lock_for_update(locked_nodes).all()
 
-        for node_db in nodes:
+        for node in nodes:
+            node_db = objects.Node.get_by_uid(node['uid'])
+            print "### deleting node", node_db.id
             if not node_db:
                 logger.error(
                     u"Failed to delete node '%s': node doesn't exist",
@@ -93,9 +96,12 @@ class NailgunReceiver(object):
                 break
             db().delete(node_db)
 
+        print "### remove_nodes_resp, nodes deleted"
+
         for node in inaccessible_nodes:
             # Nodes which not answered by rpc just removed from db
-            node_db = db().query(Node).get(node['uid'])
+            # node_db = db().query(Node).get(node['uid'])
+            node_db = objects.Node.get_by_uid(node['uid'])
             if node_db:
                 logger.warn(
                     u'Node %s not answered by RPC, removing from db',
@@ -103,7 +109,8 @@ class NailgunReceiver(object):
                 db().delete(node_db)
 
         for node in error_nodes:
-            node_db = db().query(Node).get(node['uid'])
+            # node_db = db().query(Node).get(node['uid'])
+            node_db = objects.Node.get_by_uid(node['uid'])
             if not node_db:
                 logger.error(
                     u"Failed to delete node '%s' marked as error from Astute:"
@@ -133,8 +140,8 @@ class NailgunReceiver(object):
             notifier.notify("error", err_msg)
         if not error_msg:
             error_msg = ". ".join([success_msg, err_msg])
-
         data = {'status': status, 'progress': progress, 'message': error_msg}
+        print "### remove_nodes_resp, data for task update", data
         objects.Task.update(task, data)
 
     @classmethod
@@ -206,7 +213,7 @@ class NailgunReceiver(object):
         )
 
         # locking all cluster tasks
-        objects.TaskCollection.lock_cluster_tasks(task.cluster_id).all()
+        objects.TaskCollection.lock_cluster_tasks(task.cluster_id)
 
         # lock cluster
         objects.Cluster.get_by_uid(
@@ -510,7 +517,7 @@ class NailgunReceiver(object):
         )
 
         # locking all cluster tasks
-        objects.TaskCollection.lock_cluster_tasks(task.cluster_id).all()
+        objects.TaskCollection.lock_cluster_tasks(task.cluster_id)
 
         stopping_task_names = [
             consts.TASK_NAMES.deploy,
