@@ -39,7 +39,7 @@ from nailgun.logger import logger
 from nailgun.network.checker import NetworkCheck
 from nailgun.orchestrator import deployment_serializers
 from nailgun.orchestrator import provisioning_serializers
-from nailgun.orchestrator import plugins_serializer
+from nailgun.orchestrator import plugins_serializers
 from nailgun.settings import settings
 from nailgun.task.fake import FAKE_THREADS
 from nailgun.task.helpers import TaskHelper
@@ -138,9 +138,9 @@ class DeploymentTask(object):
 
         serialized_cluster = deployment_serializers.serialize(
             task.cluster, nodes)
-        pre_deployment = plugins_serializer.pre_deployment_serialize(
+        pre_deployment = plugins_serializers.pre_deployment_serialize(
             task.cluster, nodes)
-        post_deployment = plugins_serializer.post_deployment_serialize(
+        post_deployment = plugins_serializers.post_deployment_serialize(
             task.cluster, nodes)
 
         # After serialization set pending_addition to False
