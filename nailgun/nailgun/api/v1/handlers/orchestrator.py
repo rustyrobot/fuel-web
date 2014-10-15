@@ -31,6 +31,8 @@ from nailgun.orchestrator import provisioning_serializers
 from nailgun.task.helpers import TaskHelper
 from nailgun.task.manager import DeploymentTaskManager
 from nailgun.task.manager import ProvisioningTaskManager
+from nailgun.orchestrator.plugins_serializers import pre_deployment_serialize
+from nailgun.orchestrator.plugins_serializers import post_deployment_serialize
 
 
 class NodesFilterMixin(object):
@@ -75,8 +77,7 @@ class DefaultOrchestratorInfo(NodesFilterMixin, BaseHandler):
         """
         cluster = self.get_object_or_404(objects.Cluster, cluster_id)
         nodes = self.get_nodes(cluster)
-        return self._serializer.serialize(
-            cluster, nodes, ignore_customized=True)
+        return self._serializer(cluster, nodes)
 
 
 class OrchestratorInfo(BaseHandler):
@@ -133,7 +134,8 @@ class OrchestratorInfo(BaseHandler):
 
 class DefaultProvisioningInfo(DefaultOrchestratorInfo):
 
-    _serializer = provisioning_serializers
+    _serializer = lambda cluster, nodes: provisioning_serializers.serialize(
+        cluster,nodes, ignore_customized=True)
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_provision(cluster)
@@ -141,7 +143,24 @@ class DefaultProvisioningInfo(DefaultOrchestratorInfo):
 
 class DefaultDeploymentInfo(DefaultOrchestratorInfo):
 
-    _serializer = deployment_serializers
+    _serializer = lambda cluster, nodes: provisioning_serializers.serialize(
+        cluster,nodes, ignore_customized=True)
+
+    def get_default_nodes(self, cluster):
+        return TaskHelper.nodes_to_deploy(cluster)
+
+
+class DefaultPrePluginsHooksInfo(DefaultOrchestratorInfo):
+
+    _serializer = pre_deployment_serialize
+
+    def get_default_nodes(self, cluster):
+        return TaskHelper.nodes_to_deploy(cluster)
+
+
+class DefaultPostPluginsHooksInfo(DefaultOrchestratorInfo):
+
+    _serializer = post_deployment_serialize
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_deploy(cluster)

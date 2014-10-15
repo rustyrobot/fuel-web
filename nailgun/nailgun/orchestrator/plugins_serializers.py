@@ -41,7 +41,7 @@ class PluginData(object):
         version = release.version
         return filter(
             self.metadata['releases'],
-            lambda r: (r['os']operating_system == os and
+            lambda r: (r['os'] == os and
                        r['version'] == version))[0]
 
     @property
@@ -137,7 +137,7 @@ def make_shell_task(uids, task, cwd):
         'uids': uids,
         'parameters': {
             'cmd': task['parameters']['cmd'],
-            'timeout': task['parameters']['timeout']
+            'timeout': task['parameters']['timeout'],
             'cwd': cwd}}
 
 
@@ -147,8 +147,8 @@ def make_puppet_task(uids, task, cwd):
         'uids': uids,
         'parameters': {
             'puppet_manifest': task['parameters']['puppet_manifest'],
-            'puppet_modules': task['parameters']task['puppet_modules'],
-            'timeout': task['parameters']task['timeout'],
+            'puppet_modules': task['parameters']['puppet_modules'],
+            'timeout': task['parameters']['timeout'],
             'cwd': cwd}}
 
 
@@ -217,7 +217,7 @@ class PluginsPreDeploymentHooksSerializer(object):
             uids = self.get_uids_for_task(plugin.tasks)
             src = settings.PLUGINS_SLAVES_RSYNC.format(
                 master_ip=settings.master_ip,
-                plugin_nameplugin.plugin_name)
+                plugin_name=plugin.plugin_name)
             dst = plugin.slave_scripts_path
             tasks.append(make_sync_scripts_task(uids, src, dst))
 
