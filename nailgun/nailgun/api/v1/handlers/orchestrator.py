@@ -66,9 +66,6 @@ class DefaultOrchestratorInfo(NodesFilterMixin, BaseHandler):
     Need to redefine serializer variable
     """
 
-    # Override this attribute
-    _serializer = None
-
     @content_json
     def GET(self, cluster_id):
         """:returns: JSONized default data which will be passed to orchestrator
@@ -77,7 +74,11 @@ class DefaultOrchestratorInfo(NodesFilterMixin, BaseHandler):
         """
         cluster = self.get_object_or_404(objects.Cluster, cluster_id)
         nodes = self.get_nodes(cluster)
-        return self._serializer(cluster, nodes)
+
+        return self._serialize(cluster, nodes)
+
+    def _serialize(self, cluster, nodes):
+        raise NotImplementedError('Override the method')
 
 
 class OrchestratorInfo(BaseHandler):
@@ -134,8 +135,9 @@ class OrchestratorInfo(BaseHandler):
 
 class DefaultProvisioningInfo(DefaultOrchestratorInfo):
 
-    _serializer = lambda cluster, nodes: provisioning_serializers.serialize(
-        cluster,nodes, ignore_customized=True)
+    def _serialize(self, cluster, nodes):
+        return provisioning_serializers.serialize(
+            cluster,nodes, ignore_customized=True)
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_provision(cluster)
@@ -143,8 +145,9 @@ class DefaultProvisioningInfo(DefaultOrchestratorInfo):
 
 class DefaultDeploymentInfo(DefaultOrchestratorInfo):
 
-    _serializer = lambda cluster, nodes: provisioning_serializers.serialize(
-        cluster,nodes, ignore_customized=True)
+    def _serialize(self, cluster, nodes):
+        return provisioning_serializers.serialize(
+            cluster,nodes, ignore_customized=True)
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_deploy(cluster)
@@ -152,7 +155,8 @@ class DefaultDeploymentInfo(DefaultOrchestratorInfo):
 
 class DefaultPrePluginsHooksInfo(DefaultOrchestratorInfo):
 
-    _serializer = pre_deployment_serialize
+    def _serialize(self, cluster, nodes):
+        return pre_deployment_serialize(cluster, nodes)
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_deploy(cluster)
@@ -160,7 +164,8 @@ class DefaultPrePluginsHooksInfo(DefaultOrchestratorInfo):
 
 class DefaultPostPluginsHooksInfo(DefaultOrchestratorInfo):
 
-    _serializer = post_deployment_serialize
+    def _serialize(self, cluster, nodes):
+        return post_deployment_serialize(cluster, nodes)
 
     def get_default_nodes(self, cluster):
         return TaskHelper.nodes_to_deploy(cluster)

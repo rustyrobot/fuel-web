@@ -20,8 +20,9 @@ from nailgun.settings import settings
 
 from nailgun.settings import settings
 from urlparse import urljoin
-import string
+import yaml
 from nailgun.orchestrator.priority_serializers import PriorityStrategy
+from nailgun.objects import Cluster
 
 import glob
 import os
@@ -37,12 +38,15 @@ class PluginData(object):
         self.tasks = tasks
 
     def get_release_info(self, release):
-        os = string.lowercase(release.operating_system)
+        os = release.operating_system.lower()
         version = release.version
-        return filter(
-            self.metadata['releases'],
+
+        release_info = filter(
             lambda r: (r['os'] == os and
-                       r['version'] == version))[0]
+                       r['version'] == version),
+            self.metadata['releases'])
+
+        return release_info[0]
 
     @property
     def full_name(self):
@@ -78,18 +82,19 @@ def get_plugins():
 
 def get_plugins_for_cluster(cluster):
     plugins = get_plugins()
+    enabled_plugins = []
     for plugin in plugins:
         # TODO(eli): is required only for development
         # it will be replaced with plugins <-> cluster
         # relation
-        enabled = Cluster.get_attributes(node.cluster).editable.get(
-            plugin['name'], {}).get('metadata', {}).get('enabled')
+        enabled = Cluster.get_attributes(cluster).editable.get(
+            plugin.metadata['name'], {}).get('metadata', {}).get('enabled')
 
         if not enabled:
             continue
-        tasks.append(plugin)
+        enabled_plugins.append(plugin)
 
-    return sorted(tasks, key=lambda t: t['name'])
+    return sorted(enabled_plugins, key=lambda p: p.full_name)
 
 
 def make_repo_task(uids, repo_data, repo_path):
@@ -152,44 +157,41 @@ def make_puppet_task(uids, task, cwd):
             'cwd': cwd}}
 
 
-class PluginsPreDeploymentHooksSerializer(object):
+class BasePluginDeploymentHooksSerializer(object):
 
     def __init__(self, cluster, nodes):
         self.cluster = cluster
         self.nodes = nodes
         self.priority = PriorityStrategy()
 
-    def serialize(self):
+    def deployment_tasks(self, plugins, stage):
         tasks = []
-        plugins = get_plugins_for_cluster(self.cluster)
-        tasks.extend(self.create_repositories(plugins))
-        tasks.extend(self.sync_scripts(plugins))
-        tasks.extend(self.execute_deployment_tasks(plugins))
 
-        return self.priority.one_by_one(tasks)
-
-    def create_repositories(self, plugins):
-        os = self.cluster.release.operating_system
-        if os == 'CentOS':
-            make_repo = make_centos_repo_task
-        elif os == 'Ubuntu':
-            make_repo = make_ubuntu_repo_task
-        else:
-            raise errors.InvalidOperatingSystem(
-                'Operating system {0} is invalid'.format(os))
-
-        repo_tasks = []
         for plugin in plugins:
-            uids = self.get_uids_for_task(plugin.tasks)
-            repo_base = settings.PLUGINS_REPO_URL.format(
-                master_ip=mastger,
-                plugins_name=plugin.full_name)
+            puppet_tasks = filter(
+                lambda t: (t['type'] == 'puppet' and
+                           t['stage'] == stage),
+                plugin.tasks)
+            shell_tasks = filter(
+                lambda t: (t['type'] == 'shell' and
+                           t['stage'] == stage),
+                plugin.tasks)
+            
+            for task in shell_tasks:
+                uids = self.get_uids_for_task(task)
+                tasks.append(make_shell_task(
+                    uids,
+                    task,
+                    plugin.slave_scripts_path))
 
-            release_info = plugin.get_release_info(self.cluster.release)
-            repo_url = urljoin(repo_base, release_info['repository_path'])
-            repo_tasks.append(make_repo(uids, plugin_name, repo_url))
+            for task in puppet_tasks:
+                uids = self.get_uids_for_task(task)
+                tasks.append(make_puppet_task(
+                    uids,
+                    task,
+                    plugin.slave_scripts_path))
 
-        return repo_tasks
+        return tasks
 
     def get_uids_for_tasks(self, tasks):
         uids = []
@@ -211,61 +213,82 @@ class PluginsPreDeploymentHooksSerializer(object):
     def get_uids_for_task(self, task):
         return self.get_uids_for_tasks([task])
 
+
+class PluginsPreDeploymentHooksSerializer(BasePluginDeploymentHooksSerializer):
+
+    def serialize(self):
+        tasks = []
+        plugins = get_plugins_for_cluster(self.cluster)
+        tasks.extend(self.create_repositories(plugins))
+        tasks.extend(self.sync_scripts(plugins))
+        tasks.extend(self.deployment_tasks(plugins))
+        self.priority.one_by_one(tasks)
+
+        return tasks
+
+    def create_repositories(self, plugins):
+        os = self.cluster.release.operating_system
+        if os == 'CentOS':
+            make_repo = make_centos_repo_task
+        elif os == 'Ubuntu':
+            make_repo = make_ubuntu_repo_task
+        else:
+            raise errors.InvalidOperatingSystem(
+                'Operating system {0} is invalid'.format(os))
+
+        repo_tasks = []
+        for plugin in plugins:
+            uids = self.get_uids_for_tasks(plugin.tasks)
+            repo_base = settings.PLUGINS_REPO_URL.format(
+                master_ip=settings.MASTER_IP,
+                plugin_name=plugin.full_name)
+
+            release_info = plugin.get_release_info(self.cluster.release)
+            repo_url = urljoin(repo_base, release_info['repository_path'])
+            repo_tasks.append(make_repo(plugin.full_name, repo_url, uids))
+
+        return repo_tasks
+
     def sync_scripts(self, plugins):
         tasks = []
         for plugin in plugins:
-            uids = self.get_uids_for_task(plugin.tasks)
+            uids = self.get_uids_for_tasks(plugin.tasks)
             src = settings.PLUGINS_SLAVES_RSYNC.format(
-                master_ip=settings.master_ip,
+                master_ip=settings.MASTER_IP,
                 plugin_name=plugin.plugin_name)
             dst = plugin.slave_scripts_path
             tasks.append(make_sync_scripts_task(uids, src, dst))
 
         return tasks
 
-    def execute_deployment_tasks(self, plugins):
+    def deployment_tasks(self, plugins):
+        return super(
+            PluginsPreDeploymentHooksSerializer, self).\
+            deployment_tasks(plugins, 'pre_deployment')
+
+
+class PluginsPostDeploymentHooksSerializer(BasePluginDeploymentHooksSerializer):
+
+    def serialize(self):
         tasks = []
-
-        for plugin in plugins:
-            puppet_tasks = filter(plugin.tasks, lambda t: t['type'] == 'puppet')
-            shell_tasks = filter(plugin.tasks, lambda t: t['type'] == 'shell')
-            
-            for task in puppet_tasks:
-                uids = self.get_uids_for_task(task)
-                tasks.append(make_shell_task(
-                    uids,
-                    task,
-                    plugin.slave_scripts_path))
-
-            for task in shell_tasks:
-                uids = self.get_uids_for_task(task)
-                tasks.append(make_puppet_task(
-                    uids,
-                    task,
-                    plugin.slave_scripts_path))
+        plugins = get_plugins_for_cluster(self.cluster)
+        tasks.extend(self.deployment_tasks(plugins))
+        self.priority.one_by_one(tasks)
 
         return tasks
 
-
-class PluginsPostDeploymentHooksSerializer(object):
-
-    def __init__(self, cluster, nodes):
-        self.cluster = cluster
-        self.nodes = nodes
-
-    def serialize():
-        pass
-
-    def execute_deployment_tasks(self):
-        pass
+    def deployment_tasks(self, plugins):
+        return super(
+            PluginsPostDeploymentHooksSerializer, self).\
+            deployment_tasks(plugins, 'post_deployment')
 
 
 
 def pre_deployment_serialize(cluster, nodes):
-    serializer = PluginsPostDeploymentHooksSerializer(cluster, nodes)
+    serializer = PluginsPreDeploymentHooksSerializer(cluster, nodes)
     return serializer.serialize()
 
 
 def post_deployment_serialize(cluster, nodes):
-    serializer = PluginsPreDeploymentHooksSerializer(cluster, nodes)
+    serializer = PluginsPostDeploymentHooksSerializer(cluster, nodes)
     return serializer.serialize()
