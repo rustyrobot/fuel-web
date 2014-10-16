@@ -57,7 +57,7 @@ class PluginData(object):
     @property
     def slave_scripts_path(self):
         return settings.PLUGINS_SLAVES_SCRIPTS_PATH.format(
-            plugin_name=self.plugin_name)
+            plugin_name=self.full_name)
 
 def get_plugins():
     plugin_directories = glob.glob(os.path.join(settings.PLUGINS_PATH, '*'))
@@ -107,21 +107,18 @@ def make_repo_task(uids, repo_data, repo_path):
 
 
 def make_ubuntu_repo_task(plugin_name, repo_url, uids):
-    repo_data = """
-    deb {0}
-    """.format(repo_url)
+    repo_data = ['deb {0}'.format(repo_url)]
     repo_path = '/etc/apt/sources.list.d/{0}.list'.format(plugin_name)
 
     return make_repo_task(uids, repo_data, repo_path)
 
 
 def make_centos_repo_task(plugin_name, repo_url, uids):
-    repo_data = """
-    [{0}]
-    name=Plugin {0} repository
-    baseurl={1}
-    gpgcheck=0
-    """.format(plugin_name, repo_url)
+    repo_data = "\n".join([
+        '[{0}]'
+        'name=Plugin {0} repository'
+        'baseurl={1}'
+        'gpgcheck=0']).format(plugin_name, repo_url)
     repo_path = '/etc/yum.repos.d/{0}.repo'.format(plugin_name)
 
     return make_repo_task(uids, repo_data, repo_path)
@@ -179,6 +176,8 @@ class BasePluginDeploymentHooksSerializer(object):
             
             for task in shell_tasks:
                 uids = self.get_uids_for_task(task)
+                if not uids:
+                    continue
                 tasks.append(make_shell_task(
                     uids,
                     task,
@@ -186,6 +185,8 @@ class BasePluginDeploymentHooksSerializer(object):
 
             for task in puppet_tasks:
                 uids = self.get_uids_for_task(task)
+                if not uids:
+                    continue
                 tasks.append(make_puppet_task(
                     uids,
                     task,
@@ -239,6 +240,8 @@ class PluginsPreDeploymentHooksSerializer(BasePluginDeploymentHooksSerializer):
         repo_tasks = []
         for plugin in plugins:
             uids = self.get_uids_for_tasks(plugin.tasks)
+            if not uids:
+                continue
             repo_base = settings.PLUGINS_REPO_URL.format(
                 master_ip=settings.MASTER_IP,
                 plugin_name=plugin.full_name)
@@ -253,9 +256,11 @@ class PluginsPreDeploymentHooksSerializer(BasePluginDeploymentHooksSerializer):
         tasks = []
         for plugin in plugins:
             uids = self.get_uids_for_tasks(plugin.tasks)
+            if not uids:
+                continue
             src = settings.PLUGINS_SLAVES_RSYNC.format(
                 master_ip=settings.MASTER_IP,
-                plugin_name=plugin.plugin_name)
+                plugin_name=plugin.full_name)
             dst = plugin.slave_scripts_path
             tasks.append(make_sync_scripts_task(uids, src, dst))
 
