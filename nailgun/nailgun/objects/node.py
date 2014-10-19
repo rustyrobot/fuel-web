@@ -143,6 +143,22 @@ class Node(NailgunObject):
         ).first()
 
     @classmethod
+    def _node_has_role_by_name(cls, node, rolename):
+        if rolename in node.pending_roles or rolename in node.roles:
+            return True
+        return False
+
+    @classmethod
+    def get_node_net_list(cls, node, except_ng=None):
+        except_ng_list = [] if except_ng is None else except_ng[:]
+        if not cls._node_has_role_by_name(node, 'compute'):
+            except_ng_list.append('migration')
+        if not cls.should_have_public(node):
+            except_ng_list.append('public')
+        return [net for net in node.cluster.network_groups
+                if net.name not in except_ng_list]
+
+    @classmethod
     def should_have_public(cls, instance):
         """Determine whether this node has Public network.
 
@@ -187,7 +203,7 @@ class Node(NailgunObject):
         data["timestamp"] = datetime.now()
         data.pop("id", None)
 
-        #TODO(enchantner): fix this temporary hack in clients
+        # TODO(enchantner): fix this temporary hack in clients
         if "cluster_id" not in data and "cluster" in data:
             cluster_id = data.pop("cluster", None)
             data["cluster_id"] = cluster_id
@@ -214,6 +230,10 @@ class Node(NailgunObject):
             cls.update_roles(new_node, roles)
         if pending_roles is not None:
             cls.update_pending_roles(new_node, pending_roles)
+
+        # updating interfaces assignment
+        if new_node_cluster_id:
+            cls.update_node_interface_mapping(new_node)
 
         # creating attributes
         cls.create_attributes(new_node)
@@ -440,6 +460,10 @@ class Node(NailgunObject):
         if pending_roles_changed:
             cls.update_pending_roles(instance, pending_roles)
 
+        # updating interfaces assignment
+        if instance.cluster:
+            cls.update_node_interface_mapping(instance)
+
         if any((
             roles_changed,
             pending_roles_changed,
@@ -488,7 +512,7 @@ class Node(NailgunObject):
             )
             meta['disks'] = instance.meta['disks']
 
-        #(dshulyak) change this verification to NODE_STATUSES.deploying
+        # (dshulyak) change this verification to NODE_STATUSES.deploying
         # after we will reuse ips from dhcp range
         netmanager = Cluster.get_network_manager()
         admin_ng = netmanager.get_admin_network_group()
@@ -556,7 +580,7 @@ class Node(NailgunObject):
 
         if new_pending_roles == []:
             instance.pending_role_list = []
-            #TODO(enchantner): research why the hell we need this
+            # TODO(enchantner): research why the hell we need this
             Cluster.clear_pending_changes(
                 instance.cluster,
                 node_id=instance.id
@@ -574,7 +598,6 @@ class Node(NailgunObject):
     @classmethod
     def add_into_cluster(cls, instance, cluster_id):
         """Adds Node to Cluster by its ID.
-        Also assigns networks by default for Node.
 
         :param instance: Node instance
         :param cluster_id: Cluster ID
@@ -583,6 +606,13 @@ class Node(NailgunObject):
         instance.cluster_id = cluster_id
         db().flush()
 
+    @classmethod
+    def update_node_interface_mapping(cls, instance):
+        """Assigns networks by default for Node.
+
+        :param instance: Node instance
+        :returns: None
+        """
         network_manager = Cluster.get_network_manager(instance.cluster)
         network_manager.assign_networks_by_default(instance)
         cls.add_pending_change(instance, consts.CLUSTER_CHANGES.interfaces)
@@ -712,18 +742,15 @@ class NodeCollection(NailgunCollection):
         assign management, public, storage ips
         """
         cls.update_slave_nodes_fqdn(instances)
-
-        nodes_ids = [n.id for n in instances]
-
-        # TODO(enchantner): check network manager instance for each node
         netmanager = Cluster.get_network_manager()
-        if nodes_ids:
-            netmanager.assign_ips(nodes_ids, 'management')
-            netmanager.assign_ips(nodes_ids, 'public')
-            netmanager.assign_ips(nodes_ids, 'storage')
+        except_ng = ['private', 'fixed']
+        for node in instances:
+            for net in cls.single.get_node_net_list(node,
+                                                    except_ng):
+                netmanager.assign_ip(node.id, net)
 
-            for node in instances:
-                netmanager.assign_admin_ips(node.id)
+        for node in instances:
+            netmanager.assign_admin_ips(node.id)
 
     @classmethod
     def prepare_for_provisioning(cls, instances):

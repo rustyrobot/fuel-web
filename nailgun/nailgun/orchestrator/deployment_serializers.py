@@ -64,10 +64,7 @@ class NetworkDeploymentSerializer(object):
         for node in get_nodes_not_for_deletion(cluster):
             netw_data = node.network_data
             addresses = {}
-            for net in node.cluster.network_groups:
-                if net.name == 'public' and \
-                        not objects.Node.should_have_public(node):
-                    continue
+            for net in objects.Node.get_node_net_list(node):
                 if net.meta.get('render_addr_mask'):
                     addresses.update(cls.get_addr_mask(
                         netw_data,
@@ -371,34 +368,36 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
 
         # Add iSER extra params to astute.yaml
         node_attrs['neutron_mellanox']['storage_parent'] = \
-            nm.get_node_network_by_netname(node, 'storage')['dev']
+            nm.get_node_network_by_netname(node, 'iscsi-left')['dev']
         node_attrs['neutron_mellanox']['iser_interface_name'] = iser_new_name
 
         # Get VLAN if exists
         storage_vlan = \
-            nm.get_node_network_by_netname(node, 'storage').get('vlan')
+            nm.get_node_network_by_netname(node, 'iscsi-left').get('vlan')
 
         if storage_vlan:
             vlan_name = "vlan{0}".format(storage_vlan)
 
             # Set storage rule to iSER interface vlan interface
-            node_attrs['network_scheme']['roles']['storage'] = vlan_name
+            node_attrs['network_scheme']['roles']['iscsi-left'] = vlan_name
 
             # Set iSER interface vlan interface
             node_attrs['network_scheme']['interfaces'][vlan_name] = \
                 {'L2': {'vlan_splinters': 'off'}}
             node_attrs['network_scheme']['endpoints'][vlan_name] = \
-                node_attrs['network_scheme']['endpoints'].pop('br-storage', {})
+                node_attrs['network_scheme']['endpoints'].pop('br-iscsi-left',
+                                                              {})
             node_attrs['network_scheme']['endpoints'][vlan_name]['vlandev'] = \
                 iser_new_name
         else:
 
             # Set storage rule to iSER port
-            node_attrs['network_scheme']['roles']['storage'] = iser_new_name
+            node_attrs['network_scheme']['roles']['iscsi-left'] = iser_new_name
 
             # Set iSER endpoint with br-storage parameters
             node_attrs['network_scheme']['endpoints'][iser_new_name] = \
-                node_attrs['network_scheme']['endpoints'].pop('br-storage', {})
+                node_attrs['network_scheme']['endpoints'].pop('br-iscsi-left',
+                                                              {})
             node_attrs['network_scheme']['interfaces'][iser_new_name] = \
                 {'L2': {'vlan_splinters': 'off'}}
 
@@ -440,21 +439,37 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
             'provider': 'ovs',
             'interfaces': {},  # It's a list of physical interfaces.
             'endpoints': {
-                'br-storage': {},
                 'br-mgmt': {},
                 'br-fw-admin': {},
             },
             'roles': {
                 'management': 'br-mgmt',
-                'storage': 'br-storage',
                 'fw-admin': 'br-fw-admin',
             },
             'transformations': []
         }
 
+        except_ng = ['public', 'storage', 'management',
+                     'private', 'fixed']
+        if not cls._node_has_role_by_name(node, 'compute'):
+            except_ng.append('migration')
+
+        cluster_ng_list = node.cluster.network_groups
+        new_ng_list = [net.name for net in cluster_ng_list
+                       if net.name not in except_ng]
+
         if objects.Node.should_have_public(node):
             attrs['endpoints']['br-ex'] = {}
             attrs['roles']['ex'] = 'br-ex'
+
+        new_ng_mapping = []
+        new_ng_bridges_list = []
+        for ngname in new_ng_list:
+            bridge_name = 'br-%s' % ngname
+            attrs['endpoints'][bridge_name] = {}
+            attrs['roles'][ngname] = bridge_name
+            new_ng_bridges_list.append(bridge_name)
+            new_ng_mapping.append((ngname, bridge_name))
 
         nm = objects.Node.get_network_manager(node)
         iface_types = consts.NETWORK_INTERFACE_TYPES
@@ -512,9 +527,11 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
         # We have to add them after br-ethXX bridges because it is the way
         # to provide a right ordering of ifdown/ifup operations with
         # IP interfaces.
-        brnames = ['br-mgmt', 'br-storage', 'br-fw-admin']
+        brnames = ['br-mgmt', 'br-fw-admin']
         if objects.Node.should_have_public(node):
             brnames.append('br-ex')
+
+        brnames.extend(new_ng_bridges_list)
 
         for brname in brnames:
             attrs['transformations'].append({
@@ -524,12 +541,13 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
 
         # Populate IP address information to endpoints.
         netgroup_mapping = [
-            ('storage', 'br-storage'),
             ('management', 'br-mgmt'),
             ('fuelweb_admin', 'br-fw-admin'),
         ]
         if objects.Node.should_have_public(node):
             netgroup_mapping.append(('public', 'br-ex'))
+
+        netgroup_mapping.extend(new_ng_mapping)
 
         netgroups = {}
         for ngname, brname in netgroup_mapping:

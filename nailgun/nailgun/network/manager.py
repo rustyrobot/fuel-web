@@ -140,80 +140,58 @@ class NetworkManager(object):
             db().commit()
 
     @classmethod
-    def assign_ips(cls, nodes_ids, network_name):
-        """Idempotent assignment IP addresses to nodes.
+    def assign_ip(cls, node_id, network):
+        """Idempotent assignment IP addresses to node.
 
-        All nodes passed as first argument get IP address
+        Node passed as first argument get IP address
         from network, referred by network_name.
         If node already has IP address from this network,
         it remains unchanged. If one of the nodes is the
         node from other cluster, this func will fail.
 
-        :param node_ids: List of nodes IDs in database.
-        :type  node_ids: list
-        :param network_name: Network name
-        :type  network_name: str
+        :param node_id: node ID in database.
+        :type  node_id: int
+        :param network: Network
+        :type  network: Network Object
         :returns: None
         :raises: Exception, errors.AssignIPError
         """
-        cluster_id = db().query(Node).get(nodes_ids[0]).cluster_id
-        for node_id in nodes_ids:
-            node = db().query(Node).get(node_id)
-            if node.cluster_id != cluster_id:
-                raise Exception(
-                    u"Node id='{0}' doesn't belong to cluster_id='{1}'".format(
+        cluster_id = db().query(Node).get(node_id).cluster_id
+        if not cluster_id:
+            raise Exception(
+                u"Node id='{0}' doesn't belong to cluster_id".format(
+                    node_id
+                )
+            )
+
+        node_ips = imap(
+            lambda i: i.ip_addr,
+            cls._get_ips_except_admin(
+                node_id=node_id,
+                network_id=network.id
+            )
+        )
+
+        # check if any of node_ips in required ranges
+        ip_already_assigned = False
+        for ip in node_ips:
+            if cls.check_ip_belongs_to_net(ip, network):
+                logger.info(
+                    u"Node id='{0}' already has an IP address "
+                    "inside '{1}' network.".format(
                         node_id,
-                        cluster_id
+                        network.name
                     )
                 )
+                ip_already_assigned = True
+                break
 
-        network = db().query(NetworkGroup).\
-            filter(NetworkGroup.cluster_id == cluster_id).\
-            filter_by(name=network_name).first()
-
-        if not network:
-            raise errors.AssignIPError(
-                u"Network '%s' for cluster_id=%s not found." %
-                (network_name, cluster_id)
-            )
-
-        for node_id in nodes_ids:
-            if network_name == 'public' and \
-                    not objects.Node.should_have_public(
-                    objects.Node.get_by_mac_or_uid(node_uid=node_id)):
-                continue
-
-            node_ips = imap(
-                lambda i: i.ip_addr,
-                cls._get_ips_except_admin(
-                    node_id=node_id,
-                    network_id=network.id
-                )
-            )
-            # check if any of node_ips in required ranges
-
-            ip_already_assigned = False
-
-            for ip in node_ips:
-                if cls.check_ip_belongs_to_net(ip, network):
-                    logger.info(
-                        u"Node id='{0}' already has an IP address "
-                        "inside '{1}' network.".format(
-                            node_id,
-                            network.name
-                        )
-                    )
-                    ip_already_assigned = True
-                    break
-
-            if ip_already_assigned:
-                continue
-
+        if not ip_already_assigned:
             # IP address has not been assigned, let's do it
             logger.info(
                 "Assigning IP for node '{0}' in network '{1}'".format(
                     node_id,
-                    network_name
+                    network.name
                 )
             )
             free_ip = cls.get_free_ips(network.id)[0]
@@ -393,7 +371,8 @@ class NetworkManager(object):
         networks metadata
         """
         nics = []
-        ngs = node.cluster.network_groups + [cls.get_admin_network_group()]
+        ngs = objects.Node.get_node_net_list(node) +\
+            [cls.get_admin_network_group()]
         ngs_by_id = dict((ng.id, ng) for ng in ngs)
         # sort Network Groups ids by map_priority
         to_assign_ids = list(
@@ -933,7 +912,6 @@ class NetworkManager(object):
         # deleting old ip ranges
         db().query(IPAddrRange).filter_by(
             network_group_id=network_group_id).delete()
-
         for r in ip_ranges:
             new_ip_range = IPAddrRange(
                 first=r[0],
