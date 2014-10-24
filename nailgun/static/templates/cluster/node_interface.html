@@ -30,8 +30,7 @@
       <div class="physical-network-checkbox"></div>
     <% } else { %>
       <div class="physical-network-checkbox">
-        <% var bondable = bondingAvailable && !ifc.get('assigned_networks').find(function(interfaceNetwork) {return interfaceNetwork.getFullNetwork().get('meta').unmovable}) %>
-        <% if (bondable) { %>
+        <% if (bondingAvailable) { %>
           <label>
             <div class="custom-tumbler">
               <input type="checkbox">
