@@ -1,4 +1,4 @@
 [gerrit]
-host=review.openstack.org
-port=29418
-project=stackforge/fuel-web.git
+host=gerrit.mirantis.com
+project=cgmos/openstack/fuel-web.git
+defaultbranch=cgmos/release/15B
