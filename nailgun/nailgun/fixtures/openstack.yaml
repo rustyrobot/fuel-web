@@ -779,11 +779,17 @@
             restrictions:
               - "cluster:net_provider != 'neutron'"
           heat:
-            value: true
-            label: ""
-            description: ""
+            value: false
+            label: "Install Heat"
+            description: "If selected, Heat component will be installed"
             weight: 30
-            type: "hidden"
+            type: "checkbox"
+          horizon:
+            value: false
+            label: "Install Horizon"
+            description: "If selected, Horizon component will be installed"
+            weight: 30
+            type: "checkbox"
           ceilometer:
             value: false
             label: "Install Ceilometer"
