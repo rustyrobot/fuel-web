@@ -24,6 +24,9 @@
       cinder:
         name: "Storage - Cinder LVM"
         description: "Cinder LVM provides block storage over iSCSI. Block storage can be used for database storage, expandable file systems, or providing a server with access to raw block level devices."
+        depends:
+          - condition: "settings:storage.volumes_emc.value == false"
+            action: "hide"
     networks_metadata:
       nova_network:
         networks:
@@ -456,7 +459,7 @@
             weight: 10
             type: "checkbox"
             restrictions:
-              - "settings:storage.volumes_ceph.value == true"
+              - "settings:storage.volumes_ceph.value == true or settings:storage.volumes_emc.value == true"
         zabbix:
           metadata:
             label: "Zabbix Access"
@@ -838,6 +841,14 @@
             weight: 40
             type: "checkbox"
         storage:
+          volumes_emc:
+            value: false
+            label: "EMC (Cinder)"
+            description: "Use EMC VNX as a Cinder backend"
+            weight: 10
+            type: "checkbox"
+            restrictions:
+              - "settings:storage.volumes_emc.value == true"
           volumes_vmdk:
             value: false
             label: "VMware vCenter for volumes (Cinder)"
@@ -861,7 +872,7 @@
             weight: 20
             type: "checkbox"
             restrictions:
-              - "settings:storage.volumes_lvm.value == true or settings:common.libvirt_type.value == 'vcenter'"
+              - "settings:storage.volumes_lvm.value == true or settings:common.libvirt_type.value == 'vcenter' or settings:storage.volumes_emc.value == true"
           images_ceph:
             value: false
             label: "Ceph RBD for images (Glance)"
@@ -894,6 +905,52 @@
             type: "text"
             restrictions:
               - "settings:common.libvirt_type.value == 'vcenter'"
+          emc_username:
+            value: "username"
+            label: "EMC VNX username"
+            description: "EMC VNX username."
+            weight: 75
+            type: "text"
+            restrictions:
+              - "settings:storage.volumes_emc.value != true"
+          emc_password:
+            value: "password"
+            label: "EMC VNX password"
+            description: "EMC VNX password."
+            weight: 80
+            type: "text"
+            restrictions:
+              - "settings:storage.volumes_emc.value != true"
+          emc_sp_a_ip:
+            value: ""
+            label: "EMC VNX SP A IP"
+            description: "EMC VNX Service Processor A IP address."
+            weight: 90
+            type: "text"
+            regex:
+              source: *ipv4_regex
+              error: 'Specify valid IPv4 address'
+            restrictions:
+              - "settings:storage.volumes_emc.value != true"
+          emc_sp_b_ip:
+            value: ""
+            label: "EMC VNX SP B IP"
+            description: "EMC VNX Service Processor B IP address."
+            weight: 90
+            type: "text"
+            regex:
+              source: *ipv4_regex
+              error: 'Specify valid IPv4 address'
+            restrictions:
+              - "settings:storage.volumes_emc.value != true"
+          emc_pool_name:
+            value: ""
+            label: "EMC VNX pool name"
+            description: "EMC VNX pool name (optional)"
+            weight: 95
+            type: "text"
+            restrictions:
+              - "settings:storage.volumes_emc.value != true"
       generated:
         sahara:
           user_password:
@@ -1053,6 +1110,7 @@
               label: "dialog.create_cluster_wizard.storage.default"
               bind:
                 - "settings:storage.volumes_lvm.value": true
+                - "settings:storage.volumes_emc.value": false
             - data: "ceph"
               label: "dialog.create_cluster_wizard.storage.ceph"
               restrictions:
@@ -1062,6 +1120,14 @@
               bind:
                 - "settings:storage.volumes_ceph.value": true
                 - "settings:storage.volumes_lvm.value": false
+                - "settings:storage.volumes_emc.value": false
+            - data: "emc"
+              label: "dialog.create_cluster_wizard.storage.emc"
+              bind:
+                - "settings:storage.volumes_vmdk.value": false
+                - "settings:storage.volumes_lvm.value": false
+                - "settings:storage.volumes_ceph.value": false
+                - "settings:storage.volumes_emc.value": true
         glance:
           type: "radio"
           values:
