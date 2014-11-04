@@ -57,12 +57,7 @@ class NetworkGroup(Base):
 
         # private in terms of fuel
         'fixed',
-        'private',
-
-        # E/// networks
-        'iscsi-left',
-        'iscsi-right',
-        'migration'
+        'private'
     )
 
     id = Column(Integer, primary_key=True)

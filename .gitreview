@@ -1,0 +1,4 @@
+[gerrit]
+host=gerrit.mirantis.com
+project=cgmos/openstack/fuel-web.git
+defaultbranch=cgmos/release/15B
