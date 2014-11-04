@@ -291,11 +291,7 @@ function(utils, models, EditNodeScreen, editNodeInterfacesScreenTemplate, nodeIn
                 observe: 'mode',
                 selectOptions: {
                     collection: function() {
-                        var modes = models.Interface.prototype.bondingModes;
-                        if (_.contains(this.model.get('assigned_networks').pluck('name'), 'fuelweb_admin')) {
-                            modes = _.without(modes, 'lacp-balance-tcp');
-                        }
-                        return _.map(modes, function(mode) {
+                        return _.map(models.Interface.prototype.bondingModes, function(mode) {
                             return {value: mode, label: $.t('cluster_page.nodes_tab.configure_interfaces.bonding_modes.' + mode, {defaultValue: mode})};
                         });
                     }
