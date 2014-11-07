@@ -314,6 +314,12 @@
             description: "Quotas are used to limit CPU and memory usage for tenants. Enabling quotas will increase load on the Nova database."
             weight: 25
             type: "checkbox"
+          mos_network:
+            value: true
+            label: "MOS network approach"
+            description: "If selected, MOS network approach will be used"
+            weight: 27
+            type: "checkbox"
           auto_assign_floating_ip:
             value: false
             label: "Auto assign floating IP"
@@ -552,7 +558,7 @@
           - name: "public"
             cidr: "172.16.0.0/24"
             ip_range: ["172.16.0.2", "172.16.0.126"]
-            vlan_start: null
+            vlan_start: 99
             use_gateway: true
             notation: "ip_ranges"
             render_type: null
@@ -563,21 +569,45 @@
             assign_vip: true
           - name: "management"
             cidr: "192.168.0.0/24"
-            vlan_start: 101
+            ip_range: ["192.168.0.2", "192.168.0.126"]
+            vlan_start: 100
             use_gateway: false
-            notation: "cidr"
-            render_type: "cidr"
+            notation: "ip_ranges"
+            render_type: null
             render_addr_mask: "internal"
             map_priority: 2
             configurable: true
             assign_vip: true
-          - name: "storage"
+          - name: "migration"
             cidr: "192.168.1.0/24"
+            ip_range: ["192.168.1.2", "192.168.1.126"]
+            vlan_start: 101
+            use_gateway: false
+            notation: "ip_ranges"
+            render_type: null
+            render_addr_mask: "migration"
+            map_priority: 2
+            configurable: true
+            assign_vip: false
+          - name: "iscsi-left"
+            cidr: "192.168.2.0/24"
+            ip_range: ["192.168.2.2", "192.168.2.126"]
             vlan_start: 102
             use_gateway: false
-            notation: "cidr"
-            render_type: "cidr"
-            render_addr_mask: "storage"
+            notation: "ip_ranges"
+            render_type: null
+            render_addr_mask: "iscsi-left"
+            map_priority: 2
+            configurable: true
+            assign_vip: false
+          - name: "iscsi-right"
+            cidr: "192.168.3.0/24"
+            ip_range: ["192.168.3.2", "192.168.3.126"]
+            vlan_start: 103
+            use_gateway: false
+            notation: "ip_ranges"
+            render_type: null
+            render_addr_mask: "iscsi-right"
             map_priority: 2
             configurable: true
             assign_vip: false
@@ -1059,7 +1089,7 @@
   extend: *full_release
   fields:
     name: "Icehouse on CentOS 6.5"
-    version: "2014.1.1-5.1.1"
+    version: "2014.1.1-5.1"
     can_update_from_versions: []
     operating_system: "CentOS"
     description: "This option will install the OpenStack Icehouse packages using a CentOS based operating system. With high availability features built in, you are getting a robust, enterprise-grade OpenStack deployment."
@@ -1100,7 +1130,7 @@
   extend: *full_release
   fields:
     name: "Icehouse on Ubuntu 12.04.4"
-    version: "2014.1.1-5.1.1"
+    version: "2014.1.1-5.1"
     can_update_from_versions: []
     operating_system: "Ubuntu"
     description: "This option will install the OpenStack Icehouse packages using Ubuntu as a base operating system. With high availability features built in, you are getting a robust, enterprise-grade OpenStack deployment."
