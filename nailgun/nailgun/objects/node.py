@@ -151,6 +151,10 @@ class Node(NailgunObject):
     @classmethod
     def get_node_net_list(cls, node, except_ng=None):
         except_ng_list = [] if except_ng is None else except_ng[:]
+        if not node.cluster.is_ha_mode:
+            except_ng_list.append('swift')
+        if not cls._node_has_role_by_name(node, 'controller'):
+            except_ng_list.append('swift')
         if not cls._node_has_role_by_name(node, 'compute'):
             except_ng_list.append('migration')
         if not cls.should_have_public(node):

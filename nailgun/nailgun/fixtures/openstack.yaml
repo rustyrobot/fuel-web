@@ -611,6 +611,17 @@
             map_priority: 2
             configurable: true
             assign_vip: false
+          - name: "swift"
+            cidr: "192.168.113.0/24"
+            ip_range: ["192.168.113.2", "192.168.113.126"]
+            vlan_start: 113
+            use_gateway: false
+            notation: "ip_ranges"
+            render_type: null
+            render_addr_mask: "swift"
+            map_priority: 2
+            configurable: true
+            assign_vip: false
           - name: "private"
             seg_type: "vlan"
             vlan_start: null
