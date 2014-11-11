@@ -815,7 +815,7 @@
             weight: 30
             type: "checkbox"
           horizon:
-            value: false
+            value: true
             label: "Install Horizon"
             description: "If selected, Horizon component will be installed"
             weight: 30
