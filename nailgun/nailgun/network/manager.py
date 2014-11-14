@@ -469,8 +469,9 @@ class NetworkManager(object):
     def get_node_networkgroups_ids(cls, node):
         """Get ids of all networks assigned to node's interfaces
         """
-        return [ng.id for nic in node.interfaces
-                for ng in nic.assigned_networks_list]
+        ngs = objects.Node.get_node_net_list(node) +\
+            [cls.get_admin_network_group()]
+        return [ng.id for ng in ngs]
 
     @classmethod
     def _get_admin_node_network(cls, node):
