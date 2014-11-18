@@ -429,6 +429,7 @@ class Node(NailgunObject):
             cls.update_interfaces(instance)
 
         cluster_changed = False
+        added_to_new_cluster = False
         if "cluster_id" in data:
             new_cluster_id = data.pop("cluster_id")
             if instance.cluster_id:
@@ -446,6 +447,7 @@ class Node(NailgunObject):
                 if new_cluster_id is not None:
                     # assigning node to cluster
                     cluster_changed = True
+                    added_to_new_cluster = True
                     cls.add_into_cluster(instance, new_cluster_id)
 
         # calculating flags
@@ -465,7 +467,7 @@ class Node(NailgunObject):
             cls.update_pending_roles(instance, pending_roles)
 
         # updating interfaces assignment
-        if instance.cluster:
+        if added_to_new_cluster:
             cls.update_node_interface_mapping(instance)
 
         if any((
