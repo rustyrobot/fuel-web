@@ -67,10 +67,7 @@
                 "public": "Public",
                 "floating": "Floating",
                 "management": "Management",
-                "storage": "Storage",
-                "iscsi-left": "Iscsi Left",
-                "iscsi-right": "Iscsi Right",
-                "migration": "Migration"
+                "storage": "Storage"
             },
             "login_page": {
                 "username": "Username",
