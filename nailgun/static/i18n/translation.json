@@ -70,7 +70,6 @@
                 "storage": "Storage",
                 "iscsi-left": "Iscsi Left",
                 "iscsi-right": "Iscsi Right",
-                "swift": "Swift",
                 "migration": "Migration"
             },
             "login_page": {

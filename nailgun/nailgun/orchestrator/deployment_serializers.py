@@ -449,10 +449,14 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
             'transformations': []
         }
 
-        except_ngs = ['public', 'storage', 'management',
-                      'private', 'fixed']
-        node_ngs = objects.Node.get_node_net_list(node, except_ngs)
-        node_ng_names = [net.name for net in node_ngs]
+        except_ng = ['public', 'storage', 'management',
+                     'private', 'fixed']
+        if not cls._node_has_role_by_name(node, 'compute'):
+            except_ng.append('migration')
+
+        cluster_ng_list = node.cluster.network_groups
+        new_ng_list = [net.name for net in cluster_ng_list
+                       if net.name not in except_ng]
 
         if objects.Node.should_have_public(node):
             attrs['endpoints']['br-ex'] = {}
@@ -460,7 +464,7 @@ class NeutronNetworkDeploymentSerializer(NetworkDeploymentSerializer):
 
         new_ng_mapping = []
         new_ng_bridges_list = []
-        for ngname in node_ng_names:
+        for ngname in new_ng_list:
             bridge_name = 'br-%s' % ngname
             attrs['endpoints'][bridge_name] = {}
             attrs['roles'][ngname] = bridge_name

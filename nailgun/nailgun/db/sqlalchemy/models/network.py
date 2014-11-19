@@ -62,7 +62,6 @@ class NetworkGroup(Base):
         # E/// networks
         'iscsi-left',
         'iscsi-right',
-        'swift',
         'migration'
     )
 
