@@ -20,6 +20,9 @@ from nailgun.objects.serializers import plugin
 
 from nailgun.db import db
 
+from distutils.version import LooseVersion
+
+from itertools import groupby
 
 class Plugin(base.NailgunObject):
 
@@ -35,3 +38,20 @@ class Plugin(base.NailgunObject):
 class PluginCollection(base.NailgunCollection):
 
     single = Plugin
+
+    @classmethod
+    def all_newest(cls):
+        sorted_by_version = sorted(
+            cls.all(),
+            key=lambda p: LooseVersion(p.version),
+            reverse=True)
+
+        plugins = []
+        grouped_by_name = groupby(sorted_by_version, lambda p: p.name)
+        for name, plugin in grouped_by_name:
+            # The first element in the list is a plugin
+            # with highest version
+            first_plugin = plugin.next()
+            plugins.append(first_plugin)
+
+        return plugins
