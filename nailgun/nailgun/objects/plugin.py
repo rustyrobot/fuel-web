@@ -40,17 +40,14 @@ class PluginCollection(base.NailgunCollection):
 
     @classmethod
     def all_newest(cls):
-        sorted_by_version = sorted(
-            cls.all(),
-            key=lambda p: LooseVersion(p.version),
-            reverse=True)
+        newest_plugins = []
+        grouped_by_name = groupby(cls.all(), lambda p: p.name)
+        for name, plugins in grouped_by_name:
+            newest_plugin = sorted(
+                plugins,
+                key=lambda p: LooseVersion(p.version),
+                reverse=True)[0]
 
-        plugins = []
-        grouped_by_name = groupby(sorted_by_version, lambda p: p.name)
-        for name, plugin in grouped_by_name:
-            # The first element in the list is a plugin
-            # with highest version
-            first_plugin = plugin.next()
-            plugins.append(first_plugin)
+            newest_plugins.append(newest_plugin)
 
-        return plugins
+        return newest_plugins
