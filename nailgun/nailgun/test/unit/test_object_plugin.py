@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 #    Copyright 2014 Mirantis, Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -22,9 +24,26 @@ class TestPluginCollection(base.BaseTestCase):
 
     def test_all_newest(self):
         for version in ['1.0.0', '2.0.0', '0.0.1']:
-            plugin_data = self.env.get_default_plugin_metadata(version=version)
+            plugin_data = self.env.get_default_plugin_metadata(
+                version=version,
+                name='multiversion_plugin')
             Plugin.create(plugin_data)
 
-        self.assertEqual(len(PluginCollection.all_newest()), 1)
-        plugin = PluginCollection.all_newest()[0]
-        self.assertEqual(plugin.version, '2.0.0')
+        single_plugin_data = self.env.get_default_plugin_metadata(
+            name='single_plugin')
+        Plugin.create(single_plugin_data)
+
+        newest_plugins = PluginCollection.all_newest()
+        self.assertEqual(len(newest_plugins), 2)
+
+        single_plugin = filter(
+            lambda p: p.name == 'single_plugin',
+            newest_plugins)
+        multiversion_plugin = filter(
+            lambda p: p.name == 'multiversion_plugin',
+            newest_plugins)
+
+        self.assertEqual(len(single_plugin), 1)
+        self.assertEqual(len(multiversion_plugin), 1)
+
+        self.assertEqual(multiversion_plugin[0].version, '2.0.0')

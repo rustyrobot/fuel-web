@@ -40,6 +40,19 @@ class PluginCollection(base.NailgunCollection):
 
     @classmethod
     def all_newest(cls):
+        """Returns new plugins.
+        Example:
+        There are 3 plugins:
+        - name: plugin_name, version: 1.0.0
+        - name: plugin_name, version: 2.0.0
+        - name: plugin_name, version: 0.1.0
+        - name: plugin_another_name, version: 1.0.0
+        In this case the method returns two plugins:
+        - name: plugin_name, version: 2.0.0
+        - name: plugin_another_name, version: 1.0.0
+
+        :returns: list of Plugin models
+        """
         newest_plugins = []
         grouped_by_name = groupby(cls.all(), lambda p: p.name)
         for name, plugins in grouped_by_name:
