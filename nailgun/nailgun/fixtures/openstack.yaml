@@ -561,7 +561,7 @@
           - name: "public"
             cidr: "172.16.0.0/24"
             ip_range: ["172.16.0.2", "172.16.0.126"]
-            vlan_start: 99
+            vlan_start: null
             use_gateway: true
             notation: "ip_ranges"
             render_type: null

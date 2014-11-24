@@ -140,7 +140,7 @@ class NetworkManager(object):
             db().commit()
 
     @classmethod
-    def assign_ip(cls, node_id, network):
+    def assign_ip(cls, node_id, network_name):
         """Idempotent assignment IP addresses to node.
 
         Node passed as first argument get IP address
@@ -163,6 +163,15 @@ class NetworkManager(object):
                     node_id
                 )
             )
+
+        network = db().query(NetworkGroup).\
+            filter(NetworkGroup.cluster_id == cluster_id).\
+            filter_by(name=network_name).first()
+
+        if network_name == 'public' and \
+                not objects.Node.should_have_public(
+                objects.Node.get_by_mac_or_uid(node_uid=node_id)):
+            return
 
         node_ips = imap(
             lambda i: i.ip_addr,
@@ -469,9 +478,8 @@ class NetworkManager(object):
     def get_node_networkgroups_ids(cls, node):
         """Get ids of all networks assigned to node's interfaces
         """
-        ngs = objects.Node.get_node_net_list(node) +\
-            [cls.get_admin_network_group()]
-        return [ng.id for ng in ngs]
+        return [ng.id for nic in node.interfaces
+                for ng in nic.assigned_networks_list]
 
     @classmethod
     def _get_admin_node_network(cls, node):

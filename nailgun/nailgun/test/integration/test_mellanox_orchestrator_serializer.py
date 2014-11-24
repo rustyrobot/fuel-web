@@ -57,7 +57,7 @@ class TestMellanox(OrchestratorSerializerTestBase):
             iser_sttr = editable_attrs.setdefault('storage', {})
             iser_sttr.setdefault('iser', {})['value'] = True
             network_group = self.db().query(NetworkGroup)
-            storage = network_group.filter_by(name="storage",
+            storage = network_group.filter_by(name="iscsi-left",
                                               cluster_id=self.cluster_id)
             if iser_vlan:
                 storage.update(
@@ -122,7 +122,9 @@ class TestMellanox(OrchestratorSerializerTestBase):
             # Check network scheme changes
             network_scheme = data['network_scheme']
             self.assertEqual(
-                self.iser_interface_name, network_scheme['roles']['storage'])
+                self.iser_interface_name,
+                network_scheme['roles']['iscsi-left']
+            )
             self.assertIn(
                 self.iser_interface_name, network_scheme['interfaces'])
             self.assertEqual(self.vlan_splinters_off,
@@ -130,7 +132,7 @@ class TestMellanox(OrchestratorSerializerTestBase):
                              [self.iser_interface_name])
             self.assertIn(
                 self.iser_interface_name, network_scheme['endpoints'])
-            self.assertNotIn('br-storage', network_scheme['endpoints'])
+            self.assertNotIn('br-iscsi-left', network_scheme['endpoints'])
 
     def test_serialize_mellanox_iser_enabled_vlan(self):
         # set VLAN params
@@ -151,7 +153,7 @@ class TestMellanox(OrchestratorSerializerTestBase):
 
             # Check network scheme changes
             network_scheme = data['network_scheme']
-            self.assertEqual(vlan_name, network_scheme['roles']['storage'])
+            self.assertEqual(vlan_name, network_scheme['roles']['iscsi-left'])
             self.assertIn(vlan_name, network_scheme['interfaces'])
             self.assertEqual(
                 self.vlan_splinters_off,
@@ -161,4 +163,4 @@ class TestMellanox(OrchestratorSerializerTestBase):
             self.assertEqual(
                 self.iser_interface_name,
                 network_scheme['endpoints'][vlan_name]['vlandev'])
-            self.assertNotIn('br-storage', network_scheme['endpoints'])
+            self.assertNotIn('br-iscsi-left', network_scheme['endpoints'])

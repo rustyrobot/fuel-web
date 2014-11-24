@@ -431,7 +431,7 @@ class TestNeutronNetworkConfigurationHandlerMultinode(BaseIntegrationTest):
         mgmt = filter(lambda n: n['name'] == 'management',
                       data['networks'])[0]
         self.assertEqual(mgmt['gateway'], '192.168.0.1')
-        strg = filter(lambda n: n['name'] == 'storage',
+        strg = filter(lambda n: n['name'] == 'iscsi-left',
                       data['networks'])[0]
         self.assertIsNone(strg['gateway'])
 

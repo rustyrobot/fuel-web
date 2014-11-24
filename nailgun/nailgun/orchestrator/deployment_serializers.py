@@ -65,6 +65,9 @@ class NetworkDeploymentSerializer(object):
             netw_data = node.network_data
             addresses = {}
             for net in objects.Node.get_node_net_list(node):
+                if net.name == 'public' and \
+                        not objects.Node.should_have_public(node):
+                    continue
                 if net.meta.get('render_addr_mask'):
                     addresses.update(cls.get_addr_mask(
                         netw_data,

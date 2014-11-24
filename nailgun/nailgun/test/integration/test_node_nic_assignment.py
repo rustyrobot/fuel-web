@@ -261,7 +261,8 @@ class TestNodeHandlers(BaseIntegrationTest):
             headers=self.default_headers)
         self.assertEqual(resp.status_code, 200)
         response = jsonutils.loads(resp.body)
-        net_name_per_nic = [['fuelweb_admin', 'storage', 'private'],
+        net_name_per_nic = [['fuelweb_admin', 'iscsi-left', 'iscsi-right',
+                             'private'],
                             ['public'],
                             ['management']]
         for i, nic in enumerate(sorted(response, key=lambda x: x['name'])):
@@ -298,8 +299,8 @@ class TestNodeHandlers(BaseIntegrationTest):
             headers=self.default_headers)
         self.assertEqual(resp.status_code, 200)
         response = jsonutils.loads(resp.body)
-        net_name_per_nic = [['fuelweb_admin', 'storage', 'public',
-                             'management', 'private'],
+        net_name_per_nic = [['fuelweb_admin', 'iscsi-left', 'iscsi-right',
+                             'public', 'management', 'private'],
                             [], []]
         for i, nic in enumerate(sorted(response, key=lambda x: x['name'])):
             net_names = set([net['name'] for net in nic['assigned_networks']])
@@ -469,11 +470,11 @@ class TestNodePublicNetworkToNICAssignment(BaseIntegrationTest):
         admin_ip = str(IPNetwork(
             self.env.network_manager.get_admin_network_group().cidr)[0])
         meta['interfaces'] = [
-            {'name': 'eth3', 'mac': self.env.generate_random_mac()},
-            {'name': 'eth2', 'mac': self.env.generate_random_mac()},
             {'name': 'eth0', 'mac': self.env.generate_random_mac(),
                 'ip': admin_ip},
-            {'name': 'eth1', 'mac': self.env.generate_random_mac()}
+            {'name': 'eth1', 'mac': self.env.generate_random_mac()},
+            {'name': 'eth2', 'mac': self.env.generate_random_mac()},
+            {'name': 'eth3', 'mac': self.env.generate_random_mac()}
         ]
         node = self.env.create_node(api=True, meta=meta,
                                     cluster_id=self.env.clusters[0].id)

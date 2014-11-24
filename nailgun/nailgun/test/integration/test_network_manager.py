@@ -52,10 +52,11 @@ class TestNetworkManager(BaseIntegrationTest):
 
         nailgun.task.task.Cobbler = Mock()
 
-        self.env.network_manager.assign_ips(
-            [n.id for n in self.env.nodes],
-            "management"
-        )
+        for node in self.env.nodes:
+            self.env.network_manager.assign_ip(
+                node.id,
+                "management"
+            )
 
         management_net = self.db.query(NetworkGroup).\
             filter(
@@ -107,12 +108,12 @@ class TestNetworkManager(BaseIntegrationTest):
 
         node_db = self.env.nodes[0]
 
-        self.env.network_manager.assign_ips(
-            [node_db.id],
+        self.env.network_manager.assign_ip(
+            node_db.id,
             "management"
         )
-        self.env.network_manager.assign_ips(
-            [node_db.id],
+        self.env.network_manager.assign_ip(
+            node_db.id,
             "management"
         )
 
@@ -171,10 +172,11 @@ class TestNetworkManager(BaseIntegrationTest):
             ]
         )
 
-        self.env.network_manager.assign_ips(
-            [n.id for n in self.env.nodes],
-            "management"
-        )
+        for node in self.env.nodes:
+            self.env.network_manager.assign_ip(
+                node.id,
+                "management"
+            )
 
         ips = self.env.network_manager._get_ips_except_admin(joined=True)
         self.assertEqual(len(ips), 2)

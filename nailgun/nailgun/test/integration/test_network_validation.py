@@ -428,14 +428,14 @@ class TestNeutronHandlersGre(TestNetworkChecking):
 
     def test_network_checking_fails_if_admin_intersection(self):
         admin_ng = self.env.network_manager.get_admin_network_group()
-        self.find_net_by_name('storage')["cidr"] = admin_ng.cidr
+        self.find_net_by_name('iscsi-left')["cidr"] = admin_ng.cidr
 
         task = self.update_neutron_networks_w_error(self.cluster.id, self.nets)
         self.assertIn(
             "Address space intersection between networks:\n",
             task['message'])
         self.assertIn("admin (PXE)", task['message'])
-        self.assertIn("storage", task['message'])
+        self.assertIn("iscsi-left", task['message'])
 
     def test_network_checking_fails_if_untagged_intersection(self):
         for n in self.nets['networks']:
@@ -452,7 +452,7 @@ class TestNeutronHandlersGre(TestNetworkChecking):
             task['message']
         )
         self.assertIn("admin (PXE)", task['message'])
-        self.assertIn("storage", task['message'])
+        self.assertIn("iscsi-left", task['message'])
         self.assertIn("management", task['message'])
 
     def test_network_checking_fails_if_public_gateway_not_in_cidr(self):
@@ -504,14 +504,14 @@ class TestNeutronHandlersGre(TestNetworkChecking):
 
     def test_network_checking_fails_if_network_ranges_intersect(self):
         self.find_net_by_name('management')['cidr'] = \
-            self.find_net_by_name('storage')['cidr']
+            self.find_net_by_name('iscsi-left')['cidr']
 
         task = self.update_neutron_networks_w_error(self.cluster.id, self.nets)
         self.assertIn(
             "Address space intersection between networks:\n",
             task['message'])
         self.assertIn("management", task['message'])
-        self.assertIn("storage", task['message'])
+        self.assertIn("iscsi-left", task['message'])
 
     def test_network_checking_fails_if_public_gw_ranges_intersect(self):
         self.find_net_by_name('public')['gateway'] = '172.16.0.11'
@@ -563,7 +563,7 @@ class TestNeutronHandlersGre(TestNetworkChecking):
 
     def test_network_checking_fails_on_network_vlan_match(self):
         self.find_net_by_name('management')['vlan_start'] = '111'
-        self.find_net_by_name('storage')['vlan_start'] = '111'
+        self.find_net_by_name('iscsi-left')['vlan_start'] = '111'
 
         task = self.update_neutron_networks_w_error(self.cluster.id, self.nets)
         self.assertIn(
@@ -572,7 +572,7 @@ class TestNeutronHandlersGre(TestNetworkChecking):
             "to every network.",
             task['message'])
         self.assertIn("management", task['message'])
-        self.assertIn("storage", task['message'])
+        self.assertIn("iscsi-left", task['message'])
 
     def test_network_checking_fails_if_internal_gateway_not_in_cidr(self):
         self.nets['networking_parameters']['internal_gateway'] = '172.16.10.1'
@@ -726,12 +726,12 @@ class TestNeutronHandlersVlan(TestNetworkChecking):
         self.assertEqual(len(ngs_created), len(self.nets['networks']))
 
     def test_network_checking_failed_if_networks_tags_in_neutron_range(self):
-        self.find_net_by_name('storage')['vlan_start'] = 1000
+        self.find_net_by_name('iscsi-left')['vlan_start'] = 1000
 
         task = self.update_neutron_networks_w_error(self.cluster.id, self.nets)
         self.assertEqual(
             task['message'],
-            "VLAN tags of storage network(s) intersect with "
+            "VLAN tags of iscsi-left network(s) intersect with "
             "VLAN ID range defined for Neutron L2. "
             "Networks VLAN tags must not intersect "
             "with Neutron L2 VLAN ID range.")

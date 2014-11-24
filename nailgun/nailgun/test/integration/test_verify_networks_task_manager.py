@@ -310,7 +310,8 @@ class TestNetworkVerificationWithBonds(BaseIntegrationTest):
 
     @property
     def expected_args(self):
-        expected_networks = [{u'vlans': [0, 101, 102], u'iface': u'eth0'},
+        expected_networks = [{u'vlans': [0, 100, 102, 103, 113],
+                              u'iface': u'eth0'},
                              {u'vlans': [0], u'iface': u'eth1'},
                              {u'vlans': [0], u'iface': u'eth2'}]
         _expected_args = []

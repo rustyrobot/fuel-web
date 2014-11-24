@@ -157,8 +157,6 @@ class Node(NailgunObject):
             except_ng_list.append('swift')
         if not cls._node_has_role_by_name(node, 'compute'):
             except_ng_list.append('migration')
-        if not cls.should_have_public(node):
-            except_ng_list.append('public')
         return [net for net in node.cluster.network_groups
                 if net.name not in except_ng_list]
 
@@ -753,7 +751,7 @@ class NodeCollection(NailgunCollection):
         for node in instances:
             for net in cls.single.get_node_net_list(node,
                                                     except_ng):
-                netmanager.assign_ip(node.id, net)
+                netmanager.assign_ip(node.id, net.name)
 
         for node in instances:
             netmanager.assign_admin_ips(node.id)

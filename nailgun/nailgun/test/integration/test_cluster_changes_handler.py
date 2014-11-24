@@ -392,11 +392,8 @@ class TestHandlers(BaseIntegrationTest):
         common_attrs = {
             'deployment_mode': 'ha_compact',
 
-            'management_vip': '192.168.0.1',
+            'management_vip': '192.168.0.2',
             'public_vip': '172.16.0.2',
-
-            'management_network_range': '192.168.0.0/24',
-            'storage_network_range': '192.168.1.0/24',
 
             'mp': [{'weight': '1', 'point': '1'},
                    {'weight': '2', 'point': '2'}],
@@ -473,6 +470,8 @@ class TestHandlers(BaseIntegrationTest):
         nodes_db = sorted(cluster_db.nodes, key=lambda n: n.id)
         assigned_ips = {}
         i = 0
+        migr_count = -1
+        sw_count = -1
         admin_ips = [
             '10.20.0.134/24',
             '10.20.0.133/24',
@@ -481,31 +480,59 @@ class TestHandlers(BaseIntegrationTest):
             '10.20.0.130/24',
             '10.20.0.129/24']
         for node in nodes_db:
+            has_ctrl_role = False
+            has_cpu_role = False
             node_id = node.id
             admin_ip = admin_ips.pop()
-            for role in sorted(node.roles + node.pending_roles):
-                assigned_ips[node_id] = {}
-                assigned_ips[node_id]['management'] = '192.168.0.%d' % (i + 2)
-                assigned_ips[node_id]['public'] = '172.16.0.%d' % (i + 3)
-                assigned_ips[node_id]['storage'] = '192.168.1.%d' % (i + 1)
-                assigned_ips[node_id]['admin'] = admin_ip
+            node_roles = sorted(node.roles + node.pending_roles)
+            for role in node_roles:
+                if role == 'controller':
+                    has_ctrl_role = True
+                    sw_count += 1
+                if role == 'compute':
+                    has_cpu_role = True
+                    migr_count += 1
 
-                nodes_list.append({
+            for role in node_roles:
+                assigned_ips[node_id] = {}
+                assigned_ips[node_id]['management'] = '192.168.0.%d' % (i + 3)
+                assigned_ips[node_id]['public'] = '172.16.0.%d' % (i + 3)
+                assigned_ips[node_id]['iscsi-left'] = '192.168.2.%d' % (i + 2)
+                assigned_ips[node_id]['iscsi-right'] = '192.168.3.%d' % (i + 2)
+                assigned_ips[node_id]['admin'] = admin_ip
+                node_ips = assigned_ips[node_id]
+
+                new_node = {
                     'role': role,
 
-                    'internal_address': assigned_ips[node_id]['management'],
-                    'public_address': assigned_ips[node_id]['public'],
-                    'storage_address': assigned_ips[node_id]['storage'],
+                    'internal_address': node_ips['management'],
+                    'public_address': node_ips['public'],
+                    'iscsi-left_address': node_ips['iscsi-left'],
+                    'iscsi-right_address': node_ips['iscsi-right'],
 
                     'internal_netmask': '255.255.255.0',
                     'public_netmask': '255.255.255.0',
-                    'storage_netmask': '255.255.255.0',
+                    'iscsi-left_netmask': '255.255.255.0',
+                    'iscsi-right_netmask': '255.255.255.0',
 
                     'uid': str(node_id),
                     'swift_zone': str(node_id),
 
                     'name': 'node-%d' % node_id,
-                    'fqdn': 'node-%d.%s' % (node_id, settings.DNS_DOMAIN)})
+                    'fqdn': 'node-%d.%s' % (node_id, settings.DNS_DOMAIN)
+                }
+
+                if has_ctrl_role:
+                    node_ips['swift'] = '192.168.113.%d' % (sw_count + 2)
+                    new_node['swift_address'] = node_ips['swift']
+                    new_node['swift_netmask'] = '255.255.255.0'
+
+                if has_cpu_role:
+                    node_ips['migration'] = '192.168.1.%d' % (migr_count + 2)
+                    new_node['migration_address'] = node_ips['migration']
+                    new_node['migration_netmask'] = '255.255.255.0'
+
+                nodes_list.append(new_node)
             i += 1
 
         controller_nodes = filter(
@@ -549,6 +576,13 @@ class TestHandlers(BaseIntegrationTest):
 
         deployment_info = []
         for node in nodes_db:
+            has_ctrl_role = False
+            has_cpu_role = False
+            for role in node.roles:
+                if role == 'controller':
+                    has_ctrl_role = True
+                if role == 'compute':
+                    has_cpu_role = True
             ips = assigned_ips[node.id]
             for role in sorted(node.roles):
                 priority = priority_mapping[role]
@@ -588,14 +622,18 @@ class TestHandlers(BaseIntegrationTest):
                                 "IP": [ips['public'] + "/24"],
                                 "gateway": "172.16.0.1"
                             },
-                            "br-storage": {"IP": [ips['storage'] + "/24"]},
                             "br-fw-admin": {"IP": [ips['admin']]},
+                            "br-iscsi-left": {
+                                "IP": [ips['iscsi-left'] + "/24"]},
+                            "br-iscsi-right": {
+                                "IP": [ips['iscsi-right'] + "/24"]},
                         },
                         "roles": {
                             "management": "br-mgmt",
                             "mesh": "br-mgmt",
                             "ex": "br-ex",
-                            "storage": "br-storage",
+                            "iscsi-left": "br-iscsi-left",
+                            "iscsi-right": "br-iscsi-right",
                             "fw-admin": "br-fw-admin",
                         },
                         "transformations": [
@@ -618,21 +656,20 @@ class TestHandlers(BaseIntegrationTest):
                                 "name": "br-mgmt"},
                             {
                                 "action": "add-br",
-                                "name": "br-storage"},
-                            {
-                                "action": "add-br",
                                 "name": "br-fw-admin"},
                             {
                                 "action": "add-br",
                                 "name": "br-ex"},
                             {
-                                "action": "add-patch",
-                                "bridges": [u"br-eth0", "br-storage"],
-                                "tags": [102, 0]},
+                                "action": "add-br",
+                                "name": "br-iscsi-left"},
+                            {
+                                "action": "add-br",
+                                "name": "br-iscsi-right"},
                             {
                                 "action": "add-patch",
                                 "bridges": [u"br-eth0", "br-mgmt"],
-                                "tags": [101, 0]},
+                                "tags": [100, 0]},
                             {
                                 "action": "add-patch",
                                 "bridges": [u"br-eth1", "br-fw-admin"],
@@ -641,10 +678,74 @@ class TestHandlers(BaseIntegrationTest):
                                 "action": "add-patch",
                                 "bridges": [u"br-eth0", "br-ex"],
                                 "trunks": [0]},
+                            {
+                                "action": "add-patch",
+                                "bridges": [u"br-eth0", "br-iscsi-left"],
+                                "tags": [102, 0]},
+                            {
+                                "action": "add-patch",
+                                "bridges": [u"br-eth0", "br-iscsi-right"],
+                                "tags": [103, 0]},
                         ]
                     }
                 }
+                br_index = 0
+                patch_index = 0
+                if has_ctrl_role:
+                    ng = 'swift'
+                    bridge = 'br-' + ng
+                    p_bridge = 'br-iscsi-right'
+                    net_scheme = individual_atts['network_scheme']
+                    net_scheme['endpoints'][bridge] = {}
+                    net_scheme['endpoints'][bridge]['IP'] = [ips[ng] + "/24"]
+                    net_scheme['roles'][ng] = bridge
+                    for num, item in enumerate(net_scheme['transformations']):
+                        if (item['action'] == 'add-br' and
+                                item['name'] == p_bridge):
+                            br_index = num
+                        if (item['action'] == 'add-patch' and
+                                p_bridge in item['bridges']):
+                                patch_index = num
+                    br_index += 1
+                    patch_index += 2
+                    net_scheme['transformations'].insert(
+                        br_index,
+                        {"action": "add-br", "name": bridge}
+                    )
+                    net_scheme['transformations'].insert(
+                        patch_index,
+                        {"action": "add-patch",
+                         "bridges": [u"br-eth0", bridge],
+                         "tags": [113, 0]}
+                    )
 
+                if has_cpu_role:
+                    ng = 'migration'
+                    bridge = 'br-' + ng
+                    p_bridge = 'br-ex'
+                    net_scheme = individual_atts['network_scheme']
+                    net_scheme['endpoints'][bridge] = {}
+                    net_scheme['endpoints'][bridge]['IP'] = [ips[ng] + "/24"]
+                    net_scheme['roles'][ng] = bridge
+                    for num, item in enumerate(net_scheme['transformations']):
+                        if (item['action'] == 'add-br' and
+                                item['name'] == p_bridge):
+                            br_index = num
+                        if (item['action'] == 'add-patch' and
+                                p_bridge in item['bridges']):
+                            patch_index = num
+                    br_index += 1
+                    patch_index += 2
+                    net_scheme['transformations'].insert(
+                        br_index,
+                        {"action": "add-br", "name": bridge}
+                    )
+                    net_scheme['transformations'].insert(
+                        patch_index,
+                        {"action": "add-patch",
+                         "bridges": [u"br-eth0", bridge],
+                         "tags": [101, 0]}
+                    )
                 individual_atts.update(common_attrs)
                 individual_atts['glance']['image_cache_max_size'] = str(
                     manager.calc_glance_cache_size(node.attributes.volumes)

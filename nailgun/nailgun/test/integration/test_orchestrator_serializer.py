@@ -176,9 +176,9 @@ class TestNovaOrchestratorSerializer(OrchestratorSerializerTestBase):
 
         # Check uncommon attrs
         node_uids = sorted(set([n['uid'] for n in node_list]))
-        man_ip = [str(ip) for ip in IPRange('192.168.0.1', '192.168.0.5')]
-        pub_ip = [str(ip) for ip in IPRange('172.16.0.2', '172.16.0.6')]
-        sto_ip = [str(ip) for ip in IPRange('192.168.1.1', '192.168.1.5')]
+        man_ip = [str(ip) for ip in IPRange('192.168.0.1', '192.168.0.10')]
+        pub_ip = [str(ip) for ip in IPRange('172.16.0.2', '172.16.0.11')]
+        sto_ip = [str(ip) for ip in IPRange('192.168.1.1', '192.168.1.11')]
         expected_list = [
             {'roles': ['controller', 'cinder']},
             {'roles': ['compute', 'cinder']},
@@ -840,7 +840,7 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
                 else:
                     self.assertFalse('public_netmask' in node)
                 self.assertEqual(node['internal_netmask'], '255.255.255.0')
-                self.assertEqual(node['storage_netmask'], '255.255.255.0')
+                self.assertEqual(node['iscsi-left_netmask'], '255.255.255.0')
                 self.assertEqual(node['uid'], str(node_db.id))
                 self.assertEqual(node['name'], 'node-%d' % node_db.id)
                 self.assertEqual(
@@ -854,9 +854,9 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
 
             # Check uncommon attrs
             node_uids = sorted(set([n['uid'] for n in node_list]))
-            man_ip = [str(ip) for ip in IPRange('192.168.0.1', '192.168.0.4')]
+            man_ip = [str(ip) for ip in IPRange('192.168.0.2', '192.168.0.5')]
             pub_ip = [str(ip) for ip in IPRange('172.16.0.2', '172.16.0.5')]
-            sto_ip = [str(ip) for ip in IPRange('192.168.1.1', '192.168.1.4')]
+            sto_ip = [str(ip) for ip in IPRange('192.168.2.2', '192.168.2.5')]
             expected_list = [
                 {'roles': ['controller', 'cinder']},
                 {'roles': ['compute', 'cinder']},
@@ -865,7 +865,7 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
             for i in range(len(expected_list)):
                 expected_list[i]['attrs'] = {'uid': node_uids[i],
                                              'internal_address': man_ip[i],
-                                             'storage_address': sto_ip[i]}
+                                             'iscsi-left_address': sto_ip[i]}
                 if assign:
                     expected_list[i]['attrs']['public_address'] = pub_ip[i]
             if not assign:
@@ -886,8 +886,8 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
                                          node['public_address'])
                     else:
                         self.assertFalse('public_address' in node)
-                    self.assertEqual(attrs['storage_address'],
-                                     node['storage_address'])
+                    self.assertEqual(attrs['iscsi-left_address'],
+                                     node['iscsi-left_address'])
 
     def test_public_serialization_for_different_roles(self):
         assign_public_options = (False, True)
@@ -1103,8 +1103,9 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
         cluster.attributes.editable = editable_attrs
         self.db.commit()
 
+        ng_list = objects.Node.get_node_net_list(cluster.nodes[0])
         vlan_set = set(
-            [ng.vlan_start for ng in cluster.network_groups if ng.vlan_start]
+            [ng.vlan_start for ng in ng_list if ng.vlan_start]
         )
         node = self.serializer.serialize(cluster, cluster.nodes)[0]
         interfaces = node['network_scheme']['interfaces']
@@ -1130,8 +1131,9 @@ class TestNeutronOrchestratorSerializer(OrchestratorSerializerTestBase):
         cluster.attributes.editable = editable_attrs
         self.db.commit()
 
+        ng_list = objects.Node.get_node_net_list(cluster.nodes[0])
         vlan_set = set(
-            [ng.vlan_start for ng in cluster.network_groups if ng.vlan_start]
+            [ng.vlan_start for ng in ng_list if ng.vlan_start]
         )
         private_vlan_range = cluster.network_config["vlan_range"]
         vlan_set.update(xrange(*private_vlan_range))
@@ -1213,7 +1215,7 @@ class TestNeutronOrchestratorHASerializer(OrchestratorSerializerTestBase):
     def test_get_common_attrs(self):
         attrs = self.serializer.get_common_attrs(self.cluster)
         # vips
-        self.assertEqual(attrs['management_vip'], '192.168.0.7')
+        self.assertEqual(attrs['management_vip'], '192.168.0.8')
         self.assertEqual(attrs['public_vip'], '172.16.0.5')
 
         # last_contrller
