@@ -1,0 +1,39 @@
+1 Install FUEL iso
+2 Create evironment
+3 Add nodes to environment
+
+The easiest way is to add only one controller and compute node.
+
+4 Download environment(cluster) configuration yaml file:
+
+  $ fuel node
+  $ fuel settings --download --env 1
+
+This is command will download settings_1.yaml where the new configuration can be placed.
+All new configuration should be placed to the "editable:" section. For example:
+
+ editable:
+   custom:
+     some_one:
+       one: 1
+     some_two:
+       two: 2
+     some_three:
+       three: 3
+
+5 Then upload settings back to nailgun:
+
+  $ fuel settings --upload --env 1 --directory /root/
+
+6 The default deployment configuration with custom changes can be downloaded using fuel CLI:
+
+  $ fuel deployment --default --env 1
+
+This command will download yaml files for each nodes.
+
+7 Make chanes for any nodes if needed and upload back:
+
+  $ fuel deployment --upload --env 1
+
+After configuration files are uploaded and deploy is started, all custom
+parameters should appear on each nodes in the /etc/astute.yaml.
