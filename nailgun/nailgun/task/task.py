@@ -80,38 +80,6 @@ if settings.FAKE_TASKS or settings.FAKE_TASKS_AMQP:
 
 
 class DeploymentTask(object):
-# LOGIC
-# Use cases:
-# 1. Cluster exists, node(s) added
-#   If we add one node to existing OpenStack cluster, other nodes may require
-#   updates (redeployment), but they don't require full system reinstallation.
-#   How to: run deployment for all nodes which system type is target.
-#   Run provisioning first and then deployment for nodes which are in
-#   discover system type.
-#   Q: Should we care about node status (provisioning, error, deploying)?
-#   A: offline - when node doesn't respond (agent doesn't run, not
-#                implemented); let's say user should remove this node from
-#                cluster before deployment.
-#      ready - target OS is loaded and node is Ok, we redeploy
-#              ready nodes only if cluster has pending changes i.e.
-#              network or cluster attrs were changed
-#      discover - in discovery mode, provisioning is required
-#      provisioning - at the time of task execution there should not be such
-#                     case. If there is - previous provisioning has failed.
-#                     Possible solution would be to try again to provision
-#      deploying - the same as provisioning, but stucked in previous deploy,
-#                  solution - try to deploy. May loose some data if reprovis.
-#      error - recognized error in deployment or provisioning... We have to
-#              know where the error was. If in deployment - reprovisioning may
-#              not be a solution (can loose data). If in provisioning - can do
-#              provisioning & deployment again
-# 2. New cluster, just added nodes
-#   Provision first, and run deploy as second
-# 3. Remove some and add some another node
-#   Deletion task will run first and will actually remove nodes, include
-#   removal from DB.. however removal from DB happens when remove_nodes_resp
-#   is ran. It means we have to filter nodes and not to run deployment on
-#   those which are prepared for removal.
 
     @classmethod
     def message(cls, task, nodes):
@@ -435,37 +403,108 @@ class BaseNetworkVerification(object):
 
     def get_message_body(self):
         nodes = []
+        other_networks = []
+        first_cls_node = self.task.cluster.nodes[0]
+        if self.is_network_present_for_node(first_cls_node, 'storage'):
+            if self.task.cluster.is_ha_mode:
+                controller_node = self.get_first_node_by_role(
+                    self.task.cluster.nodes,
+                    'controller'
+                )
+                if controller_node:
+                    add_nets = self.get_node_nics_mapping(
+                        controller_node,
+                        ng_name='swift'
+                    )
+                    other_networks.extend(add_nets)
+            compute_node = self.get_first_node_by_role(
+                self.task.cluster.nodes,
+                'compute'
+            )
+            if compute_node:
+                other_networks.extend(
+                    self.get_node_nics_mapping(
+                        compute_node,
+                        ng_name='migration'
+                    )
+                )
+        logger.debug(u'Other nets mapping is {0}'.format(other_networks))
         for n in self.task.cluster.nodes:
             node_json = {'uid': n.id, 'networks': []}
-
-            for nic in n.nic_interfaces:
-                assigned_networks = nic.assigned_networks_list
-                # in case of using bond interface - use networks assigned
-                # to bond
-                if nic.bond:
-                    assigned_networks = nic.bond.assigned_networks_list
-                vlans = []
-                for ng in assigned_networks:
-                    # Handle FuelWeb admin network first.
-                    if not ng.cluster_id:
-                        vlans.append(0)
-                        continue
-                    data_ng = filter(lambda i: i['name'] == ng.name,
-                                     self.config)[0]
-                    if data_ng['vlans']:
-                        vlans.extend(data_ng['vlans'])
-                    else:
-                        # in case absence of vlans net_probe will
-                        # send packages on untagged iface
-                        vlans.append(0)
-                if not vlans:
-                    continue
-                node_json['networks'].append(
-                    {'iface': nic.name, 'vlans': vlans}
-                )
+            node_json['networks'] = self.get_node_nics_mapping(
+                n,
+                other_nets=other_networks
+            )
             nodes.append(node_json)
-
         return nodes
+
+    def _node_has_role_by_name(self, node, rolename):
+        if rolename in node.pending_roles or rolename in node.roles:
+            return True
+        return False
+
+    def get_first_node_by_role(self, nodes, rolename):
+        for node in nodes:
+            if self._node_has_role_by_name(node, rolename):
+                return node
+
+    def is_network_present_for_node(self, node, ng_name):
+        for nic in node.nic_interfaces:
+            assigned_networks = nic.assigned_networks_list
+            if nic.bond:
+                assigned_networks = nic.bond.assigned_networks_list
+            for ng in assigned_networks:
+                if ng.name == ng_name:
+                    return True
+        return False
+
+    def get_node_nics_mapping(self,
+                              node,
+                              ng_name=None,
+                              other_nets=None):
+        mapping = []
+        for nic in node.nic_interfaces:
+            assigned_networks = nic.assigned_networks_list
+            # in case of using bond interface - use networks assigned
+            # to bond
+            if nic.bond:
+                assigned_networks = nic.bond.assigned_networks_list
+            vlans = set()
+            for ng in assigned_networks:
+                # Handle FuelWeb admin network first.
+                if ng_name:
+                    if ng.name != ng_name:
+                        continue
+                if not ng.cluster_id:
+                    vlans.add(0)
+                    continue
+                data_ng = filter(lambda i: i['name'] == ng.name,
+                                 self.config)[0]
+                if data_ng['vlans']:
+                    vlans.update(data_ng['vlans'])
+                else:
+                    # in case absence of vlans net_probe will
+                    # send packages on untagged iface
+                    vlans.add(0)
+            if not vlans:
+                continue
+            if other_nets:
+                for net in other_nets:
+                    if nic.name == net['iface']:
+                        vlans = vlans.union(net['vlans'])
+            if not ng_name:
+                logger.debug(
+                    u'Iface {0} of the node {1} '
+                    'has vlans : {2}'.format(
+                        nic.name,
+                        node.id,
+                        vlans
+                    )
+                )
+            mapping.append(
+                {'iface': nic.name, 'vlans': vlans}
+            )
+        return mapping
 
     def get_message(self):
         nodes = self.get_message_body()
@@ -541,7 +580,7 @@ class MulticastVerificationTask(BaseNetworkVerification):
         is present in editable attributes, which is not the case if cluster
         was upgraded from 5.0
         """
-        #TODO(dshulyak) enable it, when it will be possible to upgrade
+        # TODO(dshulyak) enable it, when it will be possible to upgrade
         # mcagent and network checker for old envs
         return False
 
