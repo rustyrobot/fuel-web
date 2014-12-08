@@ -17,6 +17,8 @@
 import abc
 import six
 
+from nailgun import consts
+
 
 class Priority(object):
     """Returns a priority sequence from hightest to lowest.
@@ -109,8 +111,26 @@ class PriorityMultinodeSerializer50(PrioritySerializer):
                 'zabbix-server']))
 
 
-# Yep, for MultiNode we have no changes between 5.0 and 5.1
-PriorityMultinodeSerializer51 = PriorityMultinodeSerializer50
+class PriorityMultinodeSerializer51(PrioritySerializer):
+
+    def set_deployment_priorities(self, nodes):
+
+        self.priority.one_by_one(self.by_role(nodes, 'zabbix-server'))
+        self.priority.one_by_one(self.by_role(nodes, 'mongo'))
+        self.priority.one_by_one(self.by_role(nodes, 'primary-mongo'))
+        self.priority.one_by_one(self.by_role(nodes, 'controller'))
+
+        self.priority.in_parallel(
+            self.not_roles(nodes, [
+                'controller',
+                'mongo',
+                'primary-mongo',
+                'zabbix-server',
+                consts.ZABBIX_MONITORING
+            ]))
+
+        self.priority.in_parallel(
+            self.by_role(nodes, consts.ZABBIX_MONITORING))
 
 
 class PriorityHASerializer50(PrioritySerializer):
@@ -170,7 +190,12 @@ class PriorityHASerializer51(PrioritySerializer):
                 'quantum',
                 'mongo',
                 'primary-mongo',
-                'zabbix-server']))
+                'zabbix-server',
+                consts.ZABBIX_MONITORING
+            ]))
+
+        self.priority.in_parallel(
+            self.by_role(nodes, consts.ZABBIX_MONITORING))
 
 
 class PriorityMultinodeSerializerPatching(PrioritySerializer):

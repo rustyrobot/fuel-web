@@ -169,3 +169,7 @@ CLUSTER_CHANGES = Enum(
     'disks',
     'interfaces'
 )
+
+#: name of the role that will be used to mark all nodes that require
+# zabbix monitoring
+ZABBIX_MONITORING = 'zabbix-monitoring'
