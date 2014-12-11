@@ -790,8 +790,10 @@ class DeploymentMultinodeSerializer(object):
         return serialized_nodes
 
     def serialize_generated(self, cluster, nodes):
+        is_updated = getattr(
+            self.previous_release(cluster), 'version', None)
         common_attrs = self.get_common_attrs(cluster)
-        nodes = self.serialize_nodes(nodes, common_attrs)
+        nodes = self.serialize_nodes(nodes, common_attrs, is_updated)
 
         self.set_deployment_priorities(nodes)
         self.set_critical_nodes(nodes)
@@ -830,7 +832,7 @@ class DeploymentMultinodeSerializer(object):
                 attrs['use_cinder'] = True
 
         self.set_storage_parameters(cluster, attrs)
-        self.set_primary_mongo(attrs['nodes'])
+        self.set_primary_mongo(attrs['nodes'], attrs['openstack_version_prev'])
 
         attrs = dict_merge(
             attrs,
@@ -922,7 +924,7 @@ class DeploymentMultinodeSerializer(object):
         for n in nodes:
             n['fail_if_error'] = n['role'] in self.critical_roles
 
-    def serialize_nodes(self, nodes, cluster_attrs):
+    def serialize_nodes(self, nodes, cluster_attrs, is_updated=None):
         """Serialize node for each role.
         For example if node has two roles then
         in orchestrator will be passed two serialized
@@ -935,7 +937,7 @@ class DeploymentMultinodeSerializer(object):
             if self.is_zabbix_enabled(cluster_attrs):
                 serialized_nodes.append(self.get_zabbix_node(node))
 
-        self.set_primary_mongo(serialized_nodes)
+        self.set_primary_mongo(serialized_nodes, is_updated)
         return serialized_nodes
 
     def serialize_node(self, node, role):
@@ -1014,7 +1016,7 @@ class DeploymentMultinodeSerializer(object):
         else:
             return self.neutron_network_serializer
 
-    def set_primary_node(self, nodes, role, primary_node_index):
+    def set_primary_node(self, nodes, role, primary_node_index, update=None):
         """Set primary node for role if it not set yet.
         primary_node_index defines primary node position in nodes list
         """
@@ -1024,7 +1026,7 @@ class DeploymentMultinodeSerializer(object):
         primary_role = 'primary-{0}'.format(role)
         primary_node = self.filter_by_roles(
             sorted_nodes, [primary_role])
-        if primary_node:
+        if primary_node or update:
             return
 
         result_nodes = self.filter_by_roles(
@@ -1032,11 +1034,11 @@ class DeploymentMultinodeSerializer(object):
         if result_nodes:
             result_nodes[primary_node_index]['role'] = primary_role
 
-    def set_primary_mongo(self, nodes):
+    def set_primary_mongo(self, nodes, update=None):
         """Set primary mongo for the last mongo node
         node if it not set yet
         """
-        self.set_primary_node(nodes, 'mongo', 0)
+        self.set_primary_node(nodes, 'mongo', 0, update)
 
     def filter_by_roles(self, nodes, roles):
         return filter(
@@ -1061,7 +1063,7 @@ class DeploymentHASerializer(DeploymentMultinodeSerializer):
                       'primary-swift-proxy',
                       'ceph-osd']
 
-    def serialize_nodes(self, nodes, cluster_attrs):
+    def serialize_nodes(self, nodes, cluster_attrs, is_updated=None):
         """Serialize nodes and set primary-controller
         """
         serialized_nodes = super(
