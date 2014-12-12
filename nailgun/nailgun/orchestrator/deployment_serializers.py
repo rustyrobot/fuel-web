@@ -937,7 +937,10 @@ class DeploymentMultinodeSerializer(object):
             if self.is_zabbix_enabled(cluster_attrs):
                 serialized_nodes.append(self.get_zabbix_node(node))
 
-        self.set_primary_mongo(serialized_nodes, is_updated)
+        # Skip primary role assignment in case of scaling/rollback
+        if self.is_primary_capable(serialized_nodes, cluster_attrs):
+            self.set_primary_mongo(serialized_nodes, is_updated)
+
         return serialized_nodes
 
     def serialize_node(self, node, role):
@@ -1054,6 +1057,12 @@ class DeploymentMultinodeSerializer(object):
         """
         return self.serialize_node(node, consts.ZABBIX_MONITORING)
 
+    def is_primary_capable(self, serialized_nodes, cluster_attrs):
+        """Check out a primary node capable
+        """
+        return 'nodes' not in cluster_attrs or\
+            (len(serialized_nodes) == len(cluster_attrs['nodes']))
+
 
 class DeploymentHASerializer(DeploymentMultinodeSerializer):
     """Serializer for ha mode."""
@@ -1068,7 +1077,11 @@ class DeploymentHASerializer(DeploymentMultinodeSerializer):
         """
         serialized_nodes = super(
             DeploymentHASerializer, self).serialize_nodes(nodes, cluster_attrs)
-        self.set_primary_controller(serialized_nodes)
+
+        # Skip primary role assignment in case of scaling/rollback
+        if self.is_primary_capable(serialized_nodes, cluster_attrs):
+            self.set_primary_controller(serialized_nodes)
+
         return serialized_nodes
 
     def set_primary_controller(self, nodes):
