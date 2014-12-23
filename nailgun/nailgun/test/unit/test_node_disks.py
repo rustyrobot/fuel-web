@@ -418,7 +418,7 @@ class TestNodeVolumesInformationHandler(BaseIntegrationTest):
     def test_volumes_information_for_controller_role(self):
         node_db = self.create_node('controller')
         response = self.get(node_db.id)
-        self.check_volumes(response, ['os', 'image'])
+        self.check_volumes(response, ['os', 'image', 'mysql', 'log'])
 
     def test_volumes_information_for_ceph_role(self):
         node_db = self.create_node('ceph-osd')
