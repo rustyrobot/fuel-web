@@ -105,7 +105,7 @@
               name: "root"
               size:
                 generator: "calc_total_vg"
-                generator_args: ["log_vg"]
+                generator_args: ["log"]
               file_system: "ext4"
         - id: "mysql"
           type: "vg"
@@ -706,7 +706,7 @@
               name: "root"
               size:
                 generator: "calc_total_vg"
-                generator_args: ["log_vg"]
+                generator_args: ["log"]
               file_system: "ext4"
         - id: "mongo"
           type: "vg"
