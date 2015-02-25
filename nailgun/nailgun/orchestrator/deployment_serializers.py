@@ -124,8 +124,8 @@ class NetworkDeploymentSerializer(object):
             network_data)
 
         if not nets or 'ip' not in nets[0]:
-            raise errors.CanNotFindNetworkForNode(
-                'Cannot find network with name: %s' % net_name)
+            logger.warning('Cannot find network with name: %s', net_name)
+            return {}
 
         net = nets[0]['ip']
         return {
