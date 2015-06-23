@@ -39,3 +39,4 @@ python-cinderclient>=1.0.7,<=1.2.1
 networkx>=1.8
 pydot-ng>=1.0.0
 ordereddict>=1.1
+importlib>=1.0.1

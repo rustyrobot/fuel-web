@@ -23,6 +23,7 @@ from alembic import util as alembic_util
 from nailgun.db.sqlalchemy import db_str
 
 
+# Configure alembic config for core db migrations
 ALEMBIC_CONFIG = alembic_config.Config(
     os.path.join(os.path.dirname(__file__), 'alembic.ini')
 )
@@ -35,33 +36,37 @@ ALEMBIC_CONFIG.set_main_option(
     db_str
 )
 
+ALEMBIC_CONFIG.set_main_option('version_table', 'volume_manager_1_0_0_alembic_version')
 
-def do_alembic_command(cmd, *args, **kwargs):
+
+def do_alembic_command(cmd, config, *args, **kwargs):
     try:
-        getattr(alembic_command, cmd)(ALEMBIC_CONFIG, *args, **kwargs)
+        getattr(alembic_command, cmd)(config, *args, **kwargs)
     except alembic_util.CommandError as e:
         alembic_util.err(str(e))
 
 
-def do_stamp(cmd):
+def do_stamp(cmd, config):
     do_alembic_command(
         cmd,
-        ALEMBIC_CONFIG.params.revision,
-        sql=ALEMBIC_CONFIG.params.sql
+        config,
+        config.params.revision,
+        sql=config.params.sql
     )
 
 
-def do_revision(cmd):
+def do_revision(cmd, config):
     do_alembic_command(
         cmd,
-        message=ALEMBIC_CONFIG.params.message,
-        autogenerate=ALEMBIC_CONFIG.params.autogenerate,
-        sql=ALEMBIC_CONFIG.params.sql
+        config,
+        message=config.params.message,
+        autogenerate=config.params.autogenerate,
+        sql=config.params.sql
     )
 
 
-def do_upgrade_downgrade(cmd):
-    params = ALEMBIC_CONFIG.params
+def do_upgrade_downgrade(cmd, config):
+    params = config.params
     if not params.revision and not params.delta:
         raise SystemExit('You must provide a revision or relative delta')
 
@@ -71,16 +76,18 @@ def do_upgrade_downgrade(cmd):
     else:
         revision = params.revision
 
-    do_alembic_command(cmd, revision, sql=params.sql)
+    do_alembic_command(cmd, config, revision, sql=params.sql)
 
 
-def do_upgrade_head():
-    do_alembic_command("upgrade", "head")
+def do_upgrade_head(config=None):
+    config = config or ALEMBIC_CONFIG
+    do_alembic_command("upgrade", config, "head")
 
 
-def action_migrate_alembic(params):
+def action_migrate_alembic(params, alembic_config=None):
     global ALEMBIC_CONFIG
-    ALEMBIC_CONFIG.params = params
+    config = alembic_config or ALEMBIC_CONFIG
+    config.params = params
 
     actions = {
         'current': do_alembic_command,
@@ -92,7 +99,7 @@ def action_migrate_alembic(params):
         'revision': do_revision
     }
 
-    actions[params.alembic_command](params.alembic_command)
+    actions[params.alembic_command](params.alembic_command, config)
 
 
 def drop_migration_meta(engine):

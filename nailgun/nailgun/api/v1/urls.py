@@ -16,6 +16,8 @@
 
 import web
 
+from nailgun.extensions.base import get_all_extensions
+
 from nailgun.api.v1.handlers.assignment import NodeAssignmentHandler
 from nailgun.api.v1.handlers.assignment import NodeUnassignmentHandler
 
@@ -34,10 +36,6 @@ from nailgun.api.v1.handlers.cluster import ClusterStopDeploymentHandler
 from nailgun.api.v1.handlers.cluster import ClusterUpdateHandler
 from nailgun.api.v1.handlers.cluster import VmwareAttributesDefaultsHandler
 from nailgun.api.v1.handlers.cluster import VmwareAttributesHandler
-
-from nailgun.api.v1.handlers.disks import NodeDefaultsDisksHandler
-from nailgun.api.v1.handlers.disks import NodeDisksHandler
-from nailgun.api.v1.handlers.disks import NodeVolumesInformationHandler
 
 from nailgun.api.v1.handlers.logs import LogEntryCollectionHandler
 from nailgun.api.v1.handlers.logs import LogPackageDefaultConfig
@@ -106,7 +104,7 @@ from nailgun.api.v1.handlers.removed import RemovedIn51RedHatSetupHandler
 from nailgun.api.v1.handlers.master_node_settings \
     import MasterNodeSettingsHandler
 
-urls = (
+urls = [
     r'/releases/?$',
     ReleaseCollectionHandler,
     r'/releases/(?P<obj_id>\d+)/?$',
@@ -198,12 +196,6 @@ urls = (
     NodeAgentHandler,
     r'/nodes/(?P<obj_id>\d+)/?$',
     NodeHandler,
-    r'/nodes/(?P<node_id>\d+)/disks/?$',
-    NodeDisksHandler,
-    r'/nodes/(?P<node_id>\d+)/disks/defaults/?$',
-    NodeDefaultsDisksHandler,
-    r'/nodes/(?P<node_id>\d+)/volumes/?$',
-    NodeVolumesInformationHandler,
     r'/nodes/interfaces/?$',
     NodeCollectionNICsHandler,
     r'/nodes/interfaces/default_assignment/?$',
@@ -262,7 +254,7 @@ urls = (
 
     r'/settings/?$',
     MasterNodeSettingsHandler,
-)
+]
 
 urls = [i if isinstance(i, str) else i.__name__ for i in urls]
 
@@ -270,11 +262,21 @@ _locals = locals()
 
 
 def app():
+    # Add urls from extensions
+    for extension in get_all_extensions():
+        if extension.urls:
+            classes = filter(lambda e: not isinstance(e, str), extension.urls)
+            for klass in classes:
+                _locals[klass.__name__] = klass
+
+            ext_urls = [i if isinstance(i, str) else i.__name__ for i in extension.urls]
+            urls.extend(ext_urls)
+
     return web.application(urls, _locals)
 
 
 def public_urls():
-    return {r'/nodes/?$': ['POST'],
-            r'/nodes/agent/?$': ['PUT'],
-            r'/version/?$': ['GET'],
-            }
+    return {
+        r'/nodes/?$': ['POST'],
+        r'/nodes/agent/?$': ['PUT'],
+        r'/version/?$': ['GET'],}

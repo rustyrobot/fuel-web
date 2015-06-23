@@ -26,6 +26,7 @@ from oslo.serialization import jsonutils
 
 from nailgun.errors import errors
 from nailgun.logger import logger
+from .objects.volumes import VolumesObject
 
 
 def is_service(space):
@@ -221,7 +222,7 @@ class DisksFormatConvertor(object):
         '''convert disks from simple format to full format
         '''
         full_format = []
-        volume_manager = node.volume_manager
+        volume_manager = VolumesObject.volume_manager_for_node(node)
         for disk in disks:
             for volume in disk['volumes']:
                 full_format = volume_manager.set_volume_size(
@@ -322,8 +323,8 @@ class DisksFormatConvertor(object):
         volumes_info = []
         for space in get_node_spaces(node):
             # Here we calculate min_size of nodes
-            min_size = node.volume_manager.expand_generators(
-                space)['min_size']
+            min_size = VolumesObject.volume_manager_for_node(
+                node).expand_generators(space)['min_size']
 
             volumes_info.append({
                 'name': space['id'],
@@ -578,7 +579,7 @@ class VolumeManager(object):
         self.node_name = node.name
 
         # Make sure that we don't change volumes directly from manager
-        self.volumes = deepcopy(node.attributes.volumes) or []
+        self.volumes = VolumesObject.get_volumes_by_node_id(node.id) or []
         # For swap calculation
         self.ram = node.meta['memory']['total']
         self.allowed_volumes = []

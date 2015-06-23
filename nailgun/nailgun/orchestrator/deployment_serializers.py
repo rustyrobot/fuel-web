@@ -38,7 +38,7 @@ from nailgun.logger import logger
 from nailgun.objects import Cluster
 from nailgun.settings import settings
 from nailgun import utils
-from nailgun.volumes import manager as volume_manager
+from nailgun.extensions.base import extension_call
 
 
 class VmwareDeploymentSerializerMixin(object):
@@ -1570,8 +1570,7 @@ class DeploymentMultinodeSerializer(GraphBasedSerializer):
         if images_ceph:
             image_cache_max_size = '0'
         else:
-            image_cache_max_size = volume_manager.calc_glance_cache_size(
-                node.attributes.volumes)
+            image_cache_max_size = extension_call('calc_glance_cache_size', node)
         return {'glance': {'image_cache_max_size': image_cache_max_size}}
 
     def generate_test_vm_image_data(self, node):

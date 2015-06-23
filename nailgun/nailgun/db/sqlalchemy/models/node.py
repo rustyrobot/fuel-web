@@ -36,7 +36,6 @@ from nailgun.db.sqlalchemy.models.fields import LowercaseString
 from nailgun.db.sqlalchemy.models.network import NetworkBondAssignment
 from nailgun.db.sqlalchemy.models.network import NetworkNICAssignment
 from nailgun.logger import logger
-from nailgun.volumes.manager import VolumeManager
 
 
 class NodeRoles(Base):
@@ -99,6 +98,8 @@ class Node(Base):
         nullable=False,
         default=consts.NODE_STATUSES.discover
     )
+    # !!!!!!!!!!!!!!! TODO(eli): remove the hardcode, defaults should be stored in the fixture
+    extensions = Column(JSON, default=[{'name': 'volume_manager', 'version': '1.0.0-alpha'}])
     meta = Column(JSON, default={})
     mac = Column(LowercaseString(17), nullable=False, unique=True)
     ip = Column(String(15))
@@ -161,10 +162,6 @@ class Node(Base):
         # TODO(enchantner): move to object
         from nailgun.network.manager import NetworkManager
         return NetworkManager.get_node_networks(self)
-
-    @property
-    def volume_manager(self):
-        return VolumeManager(self)
 
     @property
     def needs_reprovision(self):
@@ -310,7 +307,6 @@ class NodeAttributes(Base):
     __tablename__ = 'node_attributes'
     id = Column(Integer, primary_key=True)
     node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'))
-    volumes = Column(JSON, default=[])
     interfaces = Column(JSON, default={})
 
 

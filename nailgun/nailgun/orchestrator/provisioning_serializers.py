@@ -28,6 +28,7 @@ from nailgun.orchestrator.priority_serializers import PriorityStrategy
 from nailgun.orchestrator import tasks_templates
 from nailgun.settings import settings
 from nailgun.utils import extract_env_version
+from nailgun.extensions.base import extension_call
 
 
 class ProvisioningSerializer(object):
@@ -38,8 +39,7 @@ class ProvisioningSerializer(object):
         """Serialize cluster for provisioning."""
 
         cluster_attrs = objects.Attributes.merged_attrs_values(
-            cluster.attributes
-        )
+            cluster.attributes)
         serialized_nodes = []
         keyfunc = lambda node: bool(node.replaced_provisioning_info)
         for customized, node_group in groupby(nodes, keyfunc):
@@ -104,7 +104,7 @@ class ProvisioningSerializer(object):
                 'udevrules': cls.interfaces_mapping_for_udev(node)},
             'ks_meta': {
                 'pm_data': {
-                    'ks_spaces': node.attributes.volumes,
+                    'ks_spaces': extension_call('volumes_for_node', node=node),
                     'kernel_params': objects.Node.get_kernel_params(node)},
                 'fuel_version': node.cluster.fuel_version,
                 'puppet_auto_setup': 1,

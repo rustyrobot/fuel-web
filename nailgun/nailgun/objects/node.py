@@ -43,6 +43,7 @@ from nailgun.objects import Notification
 
 from nailgun.settings import settings
 
+from nailgun.extensions.base import extensions_fire_callbacks
 
 class Node(NailgunObject):
     """Node object
@@ -170,8 +171,6 @@ class Node(NailgunObject):
         (see :func:`update_roles` and :func:`update_pending_roles`)
         * creating interfaces for Node in DB (see :func:`update_interfaces`)
         * creating default Node attributes (see :func:`create_attributes`)
-        * creating default volumes allocation for Node \
-        (see :func:`update_volumes`)
         * creating Notification about newly discovered Node \
         (see :func:`create_discover_notification`)
 
@@ -215,7 +214,7 @@ class Node(NailgunObject):
 
         # creating attributes
         cls.create_attributes(new_node)
-        cls.update_volumes(new_node)
+        extensions_fire_callbacks('on_node_create', instance)
 
         cls.create_discover_notification(new_node)
         return new_node
@@ -284,60 +283,6 @@ class Node(NailgunObject):
             logger.warning(traceback.format_exc())
 
     @classmethod
-    def set_volumes(cls, instance, volumes_data):
-        """Set volumes for Node instance from JSON data.
-        Adds pending "disks" changes for Cluster which Node belongs to
-
-        :param instance: Node instance
-        :param volumes_data: JSON with new volumes data
-        :returns: None
-        """
-        db().query(models.NodeAttributes).filter_by(
-            node_id=instance.id
-        ).update({'volumes': volumes_data})
-        db().flush()
-        db().refresh(instance)
-
-    @classmethod
-    def update_volumes(cls, instance):
-        """Update volumes for Node instance.
-        Adds pending "disks" changes for Cluster which Node belongs to
-
-        :param instance: Node instance
-        :returns: None
-        """
-        attrs = instance.attributes
-        if not attrs:
-            attrs = cls.create_attributes(instance)
-
-        try:
-            attrs.volumes = instance.volume_manager.gen_volumes_info()
-        except Exception as exc:
-            msg = (
-                u"Failed to generate volumes "
-                u"info for node '{0}': '{1}'"
-            ).format(
-                instance.name or instance.mac or instance.id,
-                str(exc) or "see logs for details"
-            )
-            logger.warning(traceback.format_exc())
-            Notification.create({
-                "topic": "error",
-                "message": msg,
-                "node_id": instance.id
-            })
-
-        if instance.cluster_id:
-            Cluster.add_pending_changes(
-                instance.cluster,
-                "disks",
-                node_id=instance.id
-            )
-
-        db().add(attrs)
-        db().flush()
-
-    @classmethod
     def create_discover_notification(cls, instance):
         """Create notification about discovering new Node
 
@@ -397,8 +342,6 @@ class Node(NailgunObject):
         (see :func:`remove_from_cluster`)
         * updating interfaces for Node in DB (see :func:`update_interfaces`)
         * creating default Node attributes (see :func:`create_attributes`)
-        * updating volumes allocation for Node using Cluster's Release \
-        metadata (see :func:`update_volumes`)
 
         :param data: dictionary of key-value pairs as object fields
         :returns: Node instance
@@ -490,7 +433,9 @@ class Node(NailgunObject):
             consts.NODE_STATUSES.provisioning,
             consts.NODE_STATUSES.deploying
         ):
-            cls.update_volumes(instance)
+            # TODO(eli): If from above should be refactored
+            # to a single method is_provisioned
+            extensions_fire_callbacks('on_node_update', instance)
 
         return instance
 
@@ -508,7 +453,6 @@ class Node(NailgunObject):
             "pending_addition": True,
             "pending_deletion": False,
         }
-        cls.update_volumes(instance)
         cls.update(instance, node_data)
         cls.move_roles_to_pending_roles(instance)
         # when node reseted to discover:
@@ -518,6 +462,7 @@ class Node(NailgunObject):
         # added to cluster (without any additonal state in database)
         netmanager = Cluster.get_network_manager()
         netmanager.clear_assigned_ips(instance)
+        extensions_fire_callbacks('on_node_create', instance)
         db().flush()
 
     @classmethod
