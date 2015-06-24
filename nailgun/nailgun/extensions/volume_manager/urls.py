@@ -3,6 +3,7 @@ from .handlers.disks import NodeDisksHandler
 from .handlers.disks import NodeVolumesInformationHandler
 
 
+# TODO(eli): Extension's urls must be versioned
 urls = (
     r'/nodes/(?P<node_id>\d+)/disks/?$',
     NodeDisksHandler,
